@@ -1,0 +1,93 @@
+package com.litebase.client
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+/** Error thrown by the Litebase client for HTTP and protocol failures. */
+class LitebaseError(
+    message: String,
+    val code: String? = null,
+    val status: Int? = null,
+) : Exception(message) {
+    val errorMessage: String get() = message ?: ""
+}
+
+@Serializable
+data class User(
+    val id: String,
+    val email: String,
+    val role: String,
+    val disabled: Boolean,
+    @SerialName("created_at") val createdAt: Long,
+)
+
+@Serializable
+data class AuthTokens(
+    @SerialName("access_token") val accessToken: String,
+    @SerialName("refresh_token") val refreshToken: String,
+    @SerialName("token_type") val tokenType: String,
+    @SerialName("expires_in") val expiresIn: Int,
+    val user: User? = null,
+)
+
+@Serializable
+data class ListMeta(
+    val limit: Int,
+    val offset: Int,
+    val total: Int,
+    /** Present when rule-filtered list hit the server scan cap; total is a lower bound. */
+    val truncated: Boolean? = null,
+)
+
+data class ListResult(
+    val data: List<Map<String, JsonValue>>,
+    val meta: ListMeta,
+)
+
+/** Realtime change frame (`type: "change"`). */
+data class ChangeEvent(
+    val type: String = "change",
+    val channel: String? = null,
+    val table: String,
+    val op: String,
+    val id: String,
+    val data: Map<String, JsonValue>? = null,
+    /** Unix **seconds** (same unit as server CDC events). */
+    val ts: Long,
+)
+
+/** Non-change control frames (auth/subscribe/error). */
+data class ControlEvent(
+    val type: String,
+    val requestId: String? = null,
+    val channel: String? = null,
+    val table: String? = null,
+    val message: String? = null,
+    val code: String? = null,
+    val id: String? = null,
+)
+
+typealias SubscribeHandler = (ChangeEvent) -> Unit
+typealias ControlHandler = (ControlEvent) -> Unit
+typealias Unsubscribe = () -> Unit
+
+@Serializable
+internal data class DataEnvelope<T>(val data: T)
+
+@Serializable
+internal data class ListEnvelope(
+    val data: List<Map<String, JsonValue>>,
+    val meta: ListMeta,
+)
+
+@Serializable
+internal data class ErrorBody(
+    val error: ErrorDetail? = null,
+    val message: String? = null,
+) {
+    @Serializable
+    data class ErrorDetail(
+        val code: String? = null,
+        val message: String? = null,
+    )
+}
