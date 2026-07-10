@@ -6,6 +6,7 @@ import 'errors.dart';
 import 'http_transport.dart';
 import 'models.dart';
 import 'realtime_url.dart';
+import 'storage.dart';
 import 'sub_key.dart';
 import 'table_query.dart';
 import 'websocket.dart';
@@ -127,6 +128,9 @@ class LitebaseClient {
 
   AuthAPI get auth => AuthAPI(this);
 
+  /// Object storage (`/storage/v1`). Requires server `[storage].enabled = true`.
+  StorageAPI get storage => StorageAPI(this);
+
   TableQuery from(String table) => TableQuery(this, table);
 
   Unsubscribe onControl(ControlHandler handler) {
@@ -208,6 +212,77 @@ class LitebaseClient {
       throw _parseError(res.bodyText, res.statusCode);
     }
     return res.body;
+  }
+
+  /// Storage HTTP: raw body + custom headers (not forced JSON Content-Type).
+  Future<List<int>> requestStorageBytes(
+    String method,
+    String path, {
+    List<int>? body,
+    Map<String, String>? headers,
+    bool skipRetry = false,
+  }) async {
+    final h = <String, String>{
+      'Accept': '*/*',
+      ...?headers,
+    };
+    final access = _token;
+    if (access != null) {
+      h['Authorization'] = 'Bearer $access';
+    }
+    final res = await _http.request(
+      method: method,
+      url: joinUrl(url, path),
+      headers: h,
+      body: body,
+    );
+    if (res.statusCode == 401 &&
+        !skipRetry &&
+        _refreshToken != null &&
+        !path.startsWith('/auth/')) {
+      try {
+        await refresh();
+        return requestStorageBytes(
+          method,
+          path,
+          body: body,
+          headers: headers,
+          skipRetry: true,
+        );
+      } catch (_) {}
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _parseError(res.bodyText, res.statusCode);
+    }
+    return res.body;
+  }
+
+  Future<Map<String, dynamic>> requestStorageJson(
+    String method,
+    String path, {
+    List<int>? body,
+    Map<String, String>? headers,
+    bool skipRetry = false,
+  }) async {
+    final h = <String, String>{
+      'Accept': 'application/json',
+      ...?headers,
+    };
+    final bytes = await requestStorageBytes(
+      method,
+      path,
+      body: body,
+      headers: h,
+      skipRetry: skipRetry,
+    );
+    if (bytes.isEmpty) return {};
+    final decoded = jsonDecode(utf8.decode(bytes));
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    throw const LitebaseException(
+      'failed to decode storage response',
+      code: 'decode_error',
+    );
   }
 
   LitebaseException _parseError(String text, int status) {
@@ -310,6 +385,61 @@ class LitebaseClient {
     } finally {
       _refreshing = null;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Push devices
+  // ---------------------------------------------------------------------------
+
+  Future<PushDevice> registerPushDevice({
+    required String token,
+    required String provider,
+    String? platform,
+    String? deviceId,
+    String? appVersion,
+    String? locale,
+  }) async {
+    final json = await requestJson(
+      'POST',
+      '/push/devices',
+      body: {
+        'token': token,
+        'provider': provider,
+        if (platform != null) 'platform': platform,
+        if (deviceId != null) 'device_id': deviceId,
+        if (appVersion != null) 'app_version': appVersion,
+        if (locale != null) 'locale': locale,
+      },
+    );
+    return PushDevice.fromJson(Map<String, dynamic>.from(json['data'] as Map));
+  }
+
+  Future<List<PushDevice>> listPushDevices() async {
+    final json = await requestJson('GET', '/push/devices');
+    final data = json['data'];
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((e) => PushDevice.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<void> unregisterPushDevice({String? id, String? token}) async {
+    if (id != null && id.isNotEmpty) {
+      await request('DELETE', '/push/devices/${Uri.encodeComponent(id)}');
+      return;
+    }
+    if (token != null && token.isNotEmpty) {
+      await request(
+        'DELETE',
+        '/push/devices?token=${Uri.encodeQueryComponent(token)}',
+      );
+      return;
+    }
+    throw const LitebaseException(
+      'id or token required to unregister device',
+      code: 'bad_request',
+    );
   }
 
   Future<void> signOut() async {

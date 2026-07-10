@@ -33,7 +33,11 @@ class OkHttpHttpTransport(
             builder.header(k, v)
         }
         val body = request.body
-        val mediaType = "application/json; charset=utf-8".toMediaType()
+        // Prefer explicit Content-Type header (binary storage uploads) over JSON default.
+        val contentTypeHeader = request.headers.entries
+            .firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
+            ?.value
+        val mediaType = (contentTypeHeader ?: "application/json; charset=utf-8").toMediaType()
         when (request.method.uppercase()) {
             "GET" -> builder.get()
             "DELETE" -> {

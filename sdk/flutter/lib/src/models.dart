@@ -46,6 +46,57 @@ class User {
   int get hashCode => Object.hash(id, email, role, disabled, createdAt);
 }
 
+/// Registered push device (`POST /push/devices`).
+class PushDevice {
+  final String id;
+  final String userId;
+  final String token;
+  final String provider;
+  final String? platform;
+  final String? deviceId;
+  final String? appVersion;
+  final String? locale;
+  final int createdAt;
+  final int updatedAt;
+  final int? lastSeenAt;
+  final bool disabled;
+  final String? disabledReason;
+
+  const PushDevice({
+    required this.id,
+    required this.userId,
+    required this.token,
+    required this.provider,
+    this.platform,
+    this.deviceId,
+    this.appVersion,
+    this.locale,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lastSeenAt,
+    required this.disabled,
+    this.disabledReason,
+  });
+
+  factory PushDevice.fromJson(Map<String, dynamic> json) {
+    return PushDevice(
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      token: json['token'] as String? ?? '',
+      provider: json['provider'] as String? ?? '',
+      platform: json['platform'] as String?,
+      deviceId: json['device_id'] as String?,
+      appVersion: json['app_version'] as String?,
+      locale: json['locale'] as String?,
+      createdAt: _asInt(json['created_at']),
+      updatedAt: _asInt(json['updated_at']),
+      lastSeenAt: json['last_seen_at'] == null ? null : _asInt(json['last_seen_at']),
+      disabled: json['disabled'] == true || json['disabled'] == 1,
+      disabledReason: json['disabled_reason'] as String?,
+    );
+  }
+}
+
 /// Access + refresh token pair from login/register/refresh.
 class AuthTokens {
   final String accessToken;

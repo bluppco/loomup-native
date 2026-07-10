@@ -42,6 +42,66 @@ public struct User: Codable, Sendable, Equatable {
     }
 }
 
+/// Object metadata from `/storage/v1`.
+public struct StorageObject: Codable, Sendable, Equatable {
+    public var id: String
+    public var bucket: String
+    public var path: String
+    public var name: String
+    public var ownerId: String?
+    public var contentType: String?
+    public var size: Int64
+    public var etag: String?
+    public var createdAt: Int64
+    public var updatedAt: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case id, bucket, path, name, size, etag
+        case ownerId = "owner_id"
+        case contentType = "content_type"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+public struct StorageBucketInfo: Codable, Sendable, Equatable {
+    public var name: String
+    public var `public`: Bool
+}
+
+/// Registered push device (`POST /push/devices`).
+public struct PushDevice: Codable, Sendable, Equatable {
+    public var id: String
+    public var userId: String
+    public var token: String
+    public var provider: String
+    public var platform: String?
+    public var deviceId: String?
+    public var appVersion: String?
+    public var locale: String?
+    public var createdAt: Int64
+    public var updatedAt: Int64
+    public var lastSeenAt: Int64?
+    public var disabled: Bool
+    public var disabledReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case token
+        case provider
+        case platform
+        case deviceId = "device_id"
+        case appVersion = "app_version"
+        case locale
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case lastSeenAt = "last_seen_at"
+        case disabled
+        case disabledReason = "disabled_reason"
+    }
+}
+
 public struct AuthTokens: Codable, Sendable, Equatable {
     public var accessToken: String
     public var refreshToken: String

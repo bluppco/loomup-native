@@ -31,6 +31,43 @@ data class AuthTokens(
 )
 
 @Serializable
+data class PushDevice(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    val token: String,
+    val provider: String,
+    val platform: String? = null,
+    @SerialName("device_id") val deviceId: String? = null,
+    @SerialName("app_version") val appVersion: String? = null,
+    val locale: String? = null,
+    @SerialName("created_at") val createdAt: Long,
+    @SerialName("updated_at") val updatedAt: Long,
+    @SerialName("last_seen_at") val lastSeenAt: Long? = null,
+    val disabled: Boolean = false,
+    @SerialName("disabled_reason") val disabledReason: String? = null,
+)
+
+@Serializable
+data class StorageObject(
+    val id: String,
+    val bucket: String,
+    val path: String,
+    val name: String,
+    @SerialName("owner_id") val ownerId: String? = null,
+    @SerialName("content_type") val contentType: String? = null,
+    val size: Long,
+    val etag: String? = null,
+    @SerialName("created_at") val createdAt: Long,
+    @SerialName("updated_at") val updatedAt: Long,
+)
+
+@Serializable
+data class StorageBucketInfo(
+    val name: String,
+    val public: Boolean = false,
+)
+
+@Serializable
 data class ListMeta(
     val limit: Int,
     val offset: Int,
@@ -77,6 +114,12 @@ internal data class DataEnvelope<T>(val data: T)
 @Serializable
 internal data class ListEnvelope(
     val data: List<Map<String, JsonValue>>,
+    val meta: ListMeta,
+)
+
+@Serializable
+internal data class StorageListEnvelope(
+    val data: List<StorageObject>,
     val meta: ListMeta,
 )
 

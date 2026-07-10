@@ -20,11 +20,20 @@ export 'src/models.dart'
         ControlHandler,
         ListMeta,
         ListResult,
+        PushDevice,
         SessionTokens,
         SubscribeHandler,
         Unsubscribe,
         User,
         stringifyId;
+export 'src/storage.dart'
+    show
+        StorageAPI,
+        StorageBucket,
+        StorageBucketInfo,
+        StorageListResult,
+        StorageObject,
+        encodeObjectPath;
 export 'src/realtime_url.dart'
     show
         encodeUriComponent,

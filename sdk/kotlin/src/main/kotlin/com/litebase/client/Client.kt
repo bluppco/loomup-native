@@ -100,6 +100,8 @@ class LitebaseClient(options: LitebaseClientOptions) {
     // MARK: - Auth surface
 
     val auth: AuthAPI = AuthAPI(this)
+    val push: PushAPI = PushAPI(this)
+    val storage: StorageAPI = StorageAPI(this)
 
     class AuthAPI internal constructor(private val client: LitebaseClient) {
         suspend fun signUp(email: String, password: String): AuthTokens =
@@ -123,6 +125,105 @@ class LitebaseClient(options: LitebaseClientOptions) {
         suspend fun refresh(): AuthTokens = client.refresh()
     }
 
+    class PushAPI internal constructor(private val client: LitebaseClient) {
+        suspend fun registerDevice(
+            token: String,
+            provider: String,
+            platform: String? = null,
+            deviceId: String? = null,
+            appVersion: String? = null,
+            locale: String? = null,
+        ): PushDevice = client.registerPushDevice(
+            token = token,
+            provider = provider,
+            platform = platform,
+            deviceId = deviceId,
+            appVersion = appVersion,
+            locale = locale,
+        )
+
+        suspend fun listDevices(): List<PushDevice> = client.listPushDevices()
+
+        suspend fun unregisterDevice(id: String? = null, token: String? = null) =
+            client.unregisterPushDevice(id = id, token = token)
+    }
+
+    class StorageAPI internal constructor(private val client: LitebaseClient) {
+        suspend fun listBuckets(): List<StorageBucketInfo> = client.listStorageBuckets()
+
+        fun from(bucket: String): StorageBucket = StorageBucket(client, bucket)
+    }
+
+    class StorageBucket internal constructor(
+        private val client: LitebaseClient,
+        val bucket: String,
+    ) {
+        private fun objectPath(path: String): String {
+            val encoded = path.split("/").joinToString("/") { encodeURIComponent(it) }
+            return "/storage/v1/${encodeURIComponent(bucket)}/object/$encoded"
+        }
+
+        suspend fun upload(
+            path: String,
+            data: ByteArray,
+            contentType: String? = "application/octet-stream",
+            upsert: Boolean = false,
+        ): StorageObject {
+            val headers = linkedMapOf<String, String>()
+            if (contentType != null) headers["Content-Type"] = contentType
+            if (upsert) headers["x-lb-upsert"] = "true"
+            val env = client.requestJson<DataEnvelope<StorageObject>>(
+                method = "POST",
+                path = objectPath(path),
+                body = data,
+                contentType = contentType,
+                extraHeaders = headers,
+            )
+            return env.data
+        }
+
+        suspend fun download(path: String): ByteArray =
+            client.request(
+                method = "GET",
+                path = objectPath(path),
+                body = null,
+                contentType = null,
+                extraHeaders = mapOf("Accept" to "*/*"),
+            )
+
+        suspend fun list(
+            prefix: String? = null,
+            limit: Int = 100,
+            offset: Int = 0,
+        ): Pair<List<StorageObject>, ListMeta> {
+            val q = buildString {
+                append("limit=$limit&offset=$offset")
+                if (prefix != null) append("&prefix=${encodeURIComponent(prefix)}")
+            }
+            val env = client.requestJson<StorageListEnvelope>(
+                method = "GET",
+                path = "/storage/v1/${encodeURIComponent(bucket)}?$q",
+            )
+            return env.data to env.meta
+        }
+
+        suspend fun remove(path: String): StorageObject {
+            val env = client.requestJson<DataEnvelope<StorageObject>>(
+                method = "DELETE",
+                path = objectPath(path),
+            )
+            return env.data
+        }
+    }
+
+    suspend fun listStorageBuckets(): List<StorageBucketInfo> {
+        val env = requestJson<DataEnvelope<List<StorageBucketInfo>>>(
+            method = "GET",
+            path = "/storage/v1/buckets",
+        )
+        return env.data
+    }
+
     fun from(table: String): TableQuery = TableQuery(this, table)
 
     // MARK: - Control handlers
@@ -141,6 +242,8 @@ class LitebaseClient(options: LitebaseClientOptions) {
         method: String,
         path: String,
         body: ByteArray? = null,
+        contentType: String? = "application/json",
+        extraHeaders: Map<String, String> = emptyMap(),
         skipRetry: Boolean = false,
     ): ByteArray {
         val access = token
@@ -148,11 +251,12 @@ class LitebaseClient(options: LitebaseClientOptions) {
         val headers = linkedMapOf(
             "Accept" to "application/json",
         )
+        headers.putAll(extraHeaders)
         if (access != null) {
             headers["Authorization"] = "Bearer $access"
         }
-        if (body != null) {
-            headers["Content-Type"] = "application/json"
+        if (body != null && contentType != null) {
+            headers["Content-Type"] = contentType
         }
 
         val response = http.execute(
@@ -173,7 +277,14 @@ class LitebaseClient(options: LitebaseClientOptions) {
         ) {
             try {
                 refresh()
-                return request(method, path, body, skipRetry = true)
+                return request(
+                    method,
+                    path,
+                    body,
+                    contentType = contentType,
+                    extraHeaders = extraHeaders,
+                    skipRetry = true,
+                )
             } catch (_: Exception) {
                 // fall through with original error
             }
@@ -189,9 +300,18 @@ class LitebaseClient(options: LitebaseClientOptions) {
         method: String,
         path: String,
         body: ByteArray? = null,
+        contentType: String? = "application/json",
+        extraHeaders: Map<String, String> = emptyMap(),
         skipRetry: Boolean = false,
     ): T {
-        val data = request(method, path, body, skipRetry)
+        val data = request(
+            method,
+            path,
+            body,
+            contentType = contentType,
+            extraHeaders = extraHeaders,
+            skipRetry = skipRetry,
+        )
         return try {
             clientJson.decodeFromString(String(data, StandardCharsets.UTF_8))
         } catch (e: Exception) {
@@ -251,6 +371,44 @@ class LitebaseClient(options: LitebaseClientOptions) {
     suspend fun me(): User {
         val env: DataEnvelope<User> = requestJson("GET", "/auth/me")
         return env.data
+    }
+
+    suspend fun registerPushDevice(
+        token: String,
+        provider: String,
+        platform: String? = null,
+        deviceId: String? = null,
+        appVersion: String? = null,
+        locale: String? = null,
+    ): PushDevice {
+        val body = buildJsonObject {
+            put("token", token)
+            put("provider", provider)
+            if (platform != null) put("platform", platform)
+            if (deviceId != null) put("device_id", deviceId)
+            if (appVersion != null) put("app_version", appVersion)
+            if (locale != null) put("locale", locale)
+        }.toString().toByteArray(StandardCharsets.UTF_8)
+        val env: DataEnvelope<PushDevice> = requestJson("POST", "/push/devices", body)
+        return env.data
+    }
+
+    suspend fun listPushDevices(): List<PushDevice> {
+        val env: DataEnvelope<List<PushDevice>> = requestJson("GET", "/push/devices")
+        return env.data
+    }
+
+    suspend fun unregisterPushDevice(id: String? = null, token: String? = null) {
+        when {
+            !id.isNullOrEmpty() -> {
+                request("DELETE", "/push/devices/${java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")}")
+            }
+            !token.isNullOrEmpty() -> {
+                val q = java.net.URLEncoder.encode(token, "UTF-8")
+                request("DELETE", "/push/devices?token=$q")
+            }
+            else -> throw LitebaseError("id or token required to unregister device", code = "bad_request")
+        }
     }
 
     suspend fun refresh(): AuthTokens {

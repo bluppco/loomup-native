@@ -139,6 +139,105 @@ public final class LitebaseClient: @unchecked Sendable {
     // MARK: - Auth surface
 
     public var auth: AuthAPI { AuthAPI(client: self) }
+    public var push: PushAPI { PushAPI(client: self) }
+    public var storage: StorageAPI { StorageAPI(client: self) }
+
+    /// Object storage (`/storage/v1`).
+    public struct StorageAPI: Sendable {
+        fileprivate weak var client: LitebaseClient?
+
+        public func listBuckets() async throws -> [StorageBucketInfo] {
+            try await client!.listStorageBuckets()
+        }
+
+        public func from(_ bucket: String) -> StorageBucket {
+            StorageBucket(client: client!, bucket: bucket)
+        }
+    }
+
+    public final class StorageBucket: @unchecked Sendable {
+        private weak var client: LitebaseClient?
+        public let bucket: String
+
+        init(client: LitebaseClient, bucket: String) {
+            self.client = client
+            self.bucket = bucket
+        }
+
+        private func objectPath(_ path: String) -> String {
+            let encoded = path
+                .split(separator: "/", omittingEmptySubsequences: false)
+                .map { segment in
+                    segment.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String(segment)
+                }
+                .joined(separator: "/")
+            let b = bucket.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? bucket
+            return "/storage/v1/\(b)/object/\(encoded)"
+        }
+
+        public func upload(
+            path: String,
+            data: Data,
+            contentType: String? = "application/octet-stream",
+            upsert: Bool = false
+        ) async throws -> StorageObject {
+            var headers: [String: String] = [:]
+            if let contentType { headers["Content-Type"] = contentType }
+            if upsert { headers["x-lb-upsert"] = "true" }
+            let env: DataEnvelope<StorageObject> = try await client!.requestJSON(
+                method: "POST",
+                path: objectPath(path),
+                body: data,
+                contentType: contentType,
+                extraHeaders: headers,
+                skipRetry: false
+            )
+            return env.data
+        }
+
+        public func download(path: String) async throws -> Data {
+            try await client!.request(
+                method: "GET",
+                path: objectPath(path),
+                body: nil,
+                contentType: nil,
+                extraHeaders: ["Accept": "*/*"],
+                skipRetry: false
+            )
+        }
+
+        public func list(prefix: String? = nil, limit: Int = 100, offset: Int = 0) async throws -> (data: [StorageObject], meta: ListMeta) {
+            let b = bucket.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? bucket
+            var q = "limit=\(limit)&offset=\(offset)"
+            if let prefix,
+               let enc = prefix.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            {
+                q += "&prefix=\(enc)"
+            }
+            struct Env: Decodable {
+                let data: [StorageObject]
+                let meta: ListMeta
+            }
+            let env: Env = try await client!.requestJSON(method: "GET", path: "/storage/v1/\(b)?\(q)")
+            return (env.data, env.meta)
+        }
+
+        public func remove(path: String) async throws -> StorageObject {
+            let env: DataEnvelope<StorageObject> = try await client!.requestJSON(
+                method: "DELETE",
+                path: objectPath(path)
+            )
+            return env.data
+        }
+    }
+
+    public func listStorageBuckets() async throws -> [StorageBucketInfo] {
+        let env: DataEnvelope<[StorageBucketInfo]> = try await requestJSON(
+            method: "GET",
+            path: "/storage/v1/buckets"
+        )
+        return env.data
+    }
 
     public struct AuthAPI: Sendable {
         fileprivate weak var client: LitebaseClient?
@@ -176,6 +275,36 @@ public final class LitebaseClient: @unchecked Sendable {
         }
     }
 
+    public struct PushAPI: Sendable {
+        fileprivate weak var client: LitebaseClient?
+
+        public func registerDevice(
+            token: String,
+            provider: String,
+            platform: String? = nil,
+            deviceId: String? = nil,
+            appVersion: String? = nil,
+            locale: String? = nil
+        ) async throws -> PushDevice {
+            try await client!.registerPushDevice(
+                token: token,
+                provider: provider,
+                platform: platform,
+                deviceId: deviceId,
+                appVersion: appVersion,
+                locale: locale
+            )
+        }
+
+        public func listDevices() async throws -> [PushDevice] {
+            try await client!.listPushDevices()
+        }
+
+        public func unregisterDevice(id: String? = nil, token: String? = nil) async throws {
+            try await client!.unregisterPushDevice(id: id, token: token)
+        }
+    }
+
     public func from(_ table: String) -> TableQuery {
         TableQuery(client: self, table: table)
     }
@@ -202,11 +331,18 @@ public final class LitebaseClient: @unchecked Sendable {
         method: String,
         path: String,
         body: Data? = nil,
+        contentType: String? = "application/json",
+        extraHeaders: [String: String] = [:],
         skipRetry: Bool = false
     ) async throws -> Data {
         var req = URLRequest(url: joinURL(base: url, path: path))
         req.httpMethod = method
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if extraHeaders["Accept"] == nil {
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+        }
+        for (k, v) in extraHeaders {
+            req.setValue(v, forHTTPHeaderField: k)
+        }
         lock.lock()
         let access = token
         let refresh = refreshToken
@@ -215,7 +351,9 @@ public final class LitebaseClient: @unchecked Sendable {
             req.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization")
         }
         if let body {
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let contentType {
+                req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            }
             req.httpBody = body
         }
 
@@ -231,7 +369,14 @@ public final class LitebaseClient: @unchecked Sendable {
         {
             do {
                 _ = try await self.refresh()
-                return try await request(method: method, path: path, body: body, skipRetry: true)
+                return try await request(
+                    method: method,
+                    path: path,
+                    body: body,
+                    contentType: contentType,
+                    extraHeaders: extraHeaders,
+                    skipRetry: true
+                )
             } catch {
                 // fall through with original error
             }
@@ -247,9 +392,18 @@ public final class LitebaseClient: @unchecked Sendable {
         method: String,
         path: String,
         body: Data? = nil,
+        contentType: String? = "application/json",
+        extraHeaders: [String: String] = [:],
         skipRetry: Bool = false
     ) async throws -> T {
-        let data = try await request(method: method, path: path, body: body, skipRetry: skipRetry)
+        let data = try await request(
+            method: method,
+            path: path,
+            body: body,
+            contentType: contentType,
+            extraHeaders: extraHeaders,
+            skipRetry: skipRetry
+        )
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
@@ -301,6 +455,66 @@ public final class LitebaseClient: @unchecked Sendable {
     public func me() async throws -> User {
         let env: DataEnvelope<User> = try await requestJSON(method: "GET", path: "/auth/me")
         return env.data
+    }
+
+    // MARK: - Push devices
+
+    public func registerPushDevice(
+        token: String,
+        provider: String,
+        platform: String? = nil,
+        deviceId: String? = nil,
+        appVersion: String? = nil,
+        locale: String? = nil
+    ) async throws -> PushDevice {
+        struct Body: Encodable {
+            let token: String
+            let provider: String
+            let platform: String?
+            let device_id: String?
+            let app_version: String?
+            let locale: String?
+        }
+        let body = try encodeJSON(
+            Body(
+                token: token,
+                provider: provider,
+                platform: platform,
+                device_id: deviceId,
+                app_version: appVersion,
+                locale: locale
+            )
+        )
+        let env: DataEnvelope<PushDevice> = try await requestJSON(
+            method: "POST",
+            path: "/push/devices",
+            body: body
+        )
+        return env.data
+    }
+
+    public func listPushDevices() async throws -> [PushDevice] {
+        let env: DataEnvelope<[PushDevice]> = try await requestJSON(
+            method: "GET",
+            path: "/push/devices"
+        )
+        return env.data
+    }
+
+    public func unregisterPushDevice(id: String? = nil, token: String? = nil) async throws {
+        if let id, !id.isEmpty {
+            _ = try await request(
+                method: "DELETE",
+                path: "/push/devices/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)"
+            )
+            return
+        }
+        if let token, !token.isEmpty {
+            let q = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
+            _ = try await request(method: "DELETE", path: "/push/devices?token=\(q)")
+            return
+        }
+        throw LitebaseError("id or token required to unregister device", code: "bad_request")
     }
 
     public func refresh() async throws -> AuthTokens {
