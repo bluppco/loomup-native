@@ -1,5 +1,5 @@
 import XCTest
-@testable import Litebase
+@testable import Loomup
 
 final class SubKeyTests: XCTestCase {
     func testParseSubKeySplitsOnlyOnFirstHash() {

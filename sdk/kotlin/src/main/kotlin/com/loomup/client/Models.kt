@@ -1,10 +1,10 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Error thrown by the Litebase client for HTTP and protocol failures. */
-class LitebaseError(
+/** Error thrown by the Loomup client for HTTP and protocol failures. */
+class LoomupError(
     message: String,
     val code: String? = null,
     val status: Int? = null,

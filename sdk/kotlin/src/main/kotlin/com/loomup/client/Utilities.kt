@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets

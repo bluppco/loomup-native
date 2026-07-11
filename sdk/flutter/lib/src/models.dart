@@ -134,7 +134,7 @@ class AuthTokens {
       };
 }
 
-/// Minimal session shape for [LitebaseClient.setSession].
+/// Minimal session shape for [LoomupClient.setSession].
 class SessionTokens {
   final String accessToken;
   final String refreshToken;

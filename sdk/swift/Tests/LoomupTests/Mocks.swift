@@ -1,5 +1,5 @@
 import Foundation
-@testable import Litebase
+@testable import Loomup
 
 // MARK: - HTTP mock
 
@@ -25,7 +25,7 @@ final class MockHTTP: HTTPTransport, @unchecked Sendable {
         calls.append(Call(method: method, url: url, auth: auth, body: body))
         lock.unlock()
         guard let handler else {
-            throw LitebaseError("no mock handler", code: "test")
+            throw LoomupError("no mock handler", code: "test")
         }
         let (data, status) = try await handler(method, url, auth, body)
         let response = HTTPURLResponse(

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Litebase
+@testable import Loomup
 
 final class RealtimeTests: XCTestCase {
     func testInjectedWebSocketConstructedOnSubscribe() async throws {
@@ -240,7 +240,7 @@ final class RealtimeTests: XCTestCase {
         do {
             _ = try await c.from("todos").subscribeReady(timeoutMs: 80) { _ in }
             XCTFail("expected timeout")
-        } catch let e as LitebaseError {
+        } catch let e as LoomupError {
             XCTAssertTrue(
                 e.message.contains("timeout") || e.code == "subscribe_timeout",
                 e.message
@@ -283,7 +283,7 @@ final class RealtimeTests: XCTestCase {
         do {
             _ = try await c.from("todos").subscribeReady(timeoutMs: 2000) { _ in }
             XCTFail("expected error")
-        } catch let e as LitebaseError {
+        } catch let e as LoomupError {
             XCTAssertTrue(
                 e.message.contains("table not exposed")
                     || e.code == "SUBSCRIBE_ERROR"

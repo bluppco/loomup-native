@@ -1,10 +1,10 @@
 /**
- Litebase — Swift client for Litebase Realtime.
+ Loomup — Swift client for Loomup Realtime.
 
- Mirrors the TypeScript `@litebase/client` SDK:
+ Mirrors the TypeScript `@loomup/client` SDK:
 
  ```swift
- import Litebase
+ import Loomup
 
  let client = createClient(url: URL(string: "http://127.0.0.1:3000")!)
  let tokens = try await client.auth.signUp(email: "a@b.com", password: "secret12")

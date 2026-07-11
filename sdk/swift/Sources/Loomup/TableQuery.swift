@@ -2,10 +2,10 @@ import Foundation
 
 /// Fluent table accessor: CRUD + realtime for one table name.
 public struct TableQuery: Sendable {
-    private let client: LitebaseClient
+    private let client: LoomupClient
     private let table: String
 
-    init(client: LitebaseClient, table: String) {
+    init(client: LoomupClient, table: String) {
         self.client = client
         self.table = table
     }

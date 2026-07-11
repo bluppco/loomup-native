@@ -1,6 +1,6 @@
-# Litebase Kotlin SDK
+# Loomup Kotlin SDK
 
-Kotlin client for [Litebase Realtime](../../README.md) — auth, REST CRUD, and WebSocket subscriptions.
+Kotlin client for [Loomup Realtime](../../README.md) — auth, REST CRUD, and WebSocket subscriptions.
 
 Requires **JVM 11+** (usable from Android apps and JVM tools). Built with coroutines, kotlinx.serialization, and OkHttp.
 
@@ -14,7 +14,7 @@ includeBuild("../path/to/base/sdk/kotlin") // or publishToMavenLocal
 
 // build.gradle.kts
 dependencies {
-    implementation("com.litebase:client:0.1.0")
+    implementation("com.loomup:client:0.1.0")
 }
 ```
 
@@ -28,16 +28,16 @@ Publish locally from this directory:
 
 ```kotlin
 dependencies {
-    implementation("com.litebase:client:0.1.0")
+    implementation("com.loomup:client:0.1.0")
 }
 ```
 
 ## Quick start
 
 ```kotlin
-import com.litebase.client.createClient
-import com.litebase.client.JsonValue
-import com.litebase.client.WhereValue
+import com.loomup.client.createClient
+import com.loomup.client.JsonValue
+import com.loomup.client.WhereValue
 
 val client = createClient(url = "http://127.0.0.1:3000")
 

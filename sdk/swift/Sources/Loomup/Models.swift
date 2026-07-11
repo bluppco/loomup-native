@@ -1,7 +1,7 @@
 import Foundation
 
-/// Error thrown by the Litebase client for HTTP and protocol failures.
-public struct LitebaseError: Error, Equatable, Sendable, LocalizedError {
+/// Error thrown by the Loomup client for HTTP and protocol failures.
+public struct LoomupError: Error, Equatable, Sendable, LocalizedError {
     public var message: String
     public var code: String?
     public var status: Int?

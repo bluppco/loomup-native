@@ -1,4 +1,4 @@
-import 'package:litebase/litebase.dart';
+import 'package:loomup/loomup.dart';
 import 'package:test/test.dart';
 
 void main() {

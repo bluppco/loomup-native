@@ -1,7 +1,7 @@
 import Foundation
 
 /// Options for constructing a client.
-public struct LitebaseClientOptions: Sendable {
+public struct LoomupClientOptions: Sendable {
     public var url: URL
     public var token: String?
     public var refreshToken: String?
@@ -23,16 +23,16 @@ public struct LitebaseClientOptions: Sendable {
     }
 }
 
-/// Create a Litebase client (TypeScript `createClient` equivalent).
+/// Create a Loomup client (TypeScript `createClient` equivalent).
 public func createClient(
     url: URL,
     token: String? = nil,
     refreshToken: String? = nil,
     http: HTTPTransport = URLSessionHTTPTransport(),
     webSocketFactory: WebSocketFactory? = nil
-) -> LitebaseClient {
-    LitebaseClient(
-        options: LitebaseClientOptions(
+) -> LoomupClient {
+    LoomupClient(
+        options: LoomupClientOptions(
             url: url,
             token: token,
             refreshToken: refreshToken,
@@ -42,8 +42,8 @@ public func createClient(
     )
 }
 
-/// Litebase Realtime client: REST + WebSocket subscriptions.
-public final class LitebaseClient: @unchecked Sendable {
+/// Loomup Realtime client: REST + WebSocket subscriptions.
+public final class LoomupClient: @unchecked Sendable {
     public let url: URL
 
     private let http: HTTPTransport
@@ -70,7 +70,7 @@ public final class LitebaseClient: @unchecked Sendable {
         let workItem: DispatchWorkItem
     }
 
-    public init(options: LitebaseClientOptions) {
+    public init(options: LoomupClientOptions) {
         var base = options.url
         if base.absoluteString.hasSuffix("/") {
             let s = String(base.absoluteString.dropLast())
@@ -93,7 +93,7 @@ public final class LitebaseClient: @unchecked Sendable {
         webSocketFactory: WebSocketFactory? = nil
     ) {
         self.init(
-            options: LitebaseClientOptions(
+            options: LoomupClientOptions(
                 url: url,
                 token: token,
                 refreshToken: refreshToken,
@@ -144,7 +144,7 @@ public final class LitebaseClient: @unchecked Sendable {
 
     /// Object storage (`/storage/v1`).
     public struct StorageAPI: Sendable {
-        fileprivate weak var client: LitebaseClient?
+        fileprivate weak var client: LoomupClient?
 
         public func listBuckets() async throws -> [StorageBucketInfo] {
             try await client!.listStorageBuckets()
@@ -156,10 +156,10 @@ public final class LitebaseClient: @unchecked Sendable {
     }
 
     public final class StorageBucket: @unchecked Sendable {
-        private weak var client: LitebaseClient?
+        private weak var client: LoomupClient?
         public let bucket: String
 
-        init(client: LitebaseClient, bucket: String) {
+        init(client: LoomupClient, bucket: String) {
             self.client = client
             self.bucket = bucket
         }
@@ -183,7 +183,7 @@ public final class LitebaseClient: @unchecked Sendable {
         ) async throws -> StorageObject {
             var headers: [String: String] = [:]
             if let contentType { headers["Content-Type"] = contentType }
-            if upsert { headers["x-lb-upsert"] = "true" }
+            if upsert { headers["x-loomup-upsert"] = "true" }
             let env: DataEnvelope<StorageObject> = try await client!.requestJSON(
                 method: "POST",
                 path: objectPath(path),
@@ -240,7 +240,7 @@ public final class LitebaseClient: @unchecked Sendable {
     }
 
     public struct AuthAPI: Sendable {
-        fileprivate weak var client: LitebaseClient?
+        fileprivate weak var client: LoomupClient?
 
         public func signUp(email: String, password: String) async throws -> AuthTokens {
             try await client!.signUp(email: email, password: password)
@@ -276,7 +276,7 @@ public final class LitebaseClient: @unchecked Sendable {
     }
 
     public struct PushAPI: Sendable {
-        fileprivate weak var client: LitebaseClient?
+        fileprivate weak var client: LoomupClient?
 
         public func registerDevice(
             token: String,
@@ -407,17 +407,17 @@ public final class LitebaseClient: @unchecked Sendable {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            throw LitebaseError("failed to decode response: \(error)", code: "decode_error", status: nil)
+            throw LoomupError("failed to decode response: \(error)", code: "decode_error", status: nil)
         }
     }
 
-    private func parseError(data: Data, status: Int) -> LitebaseError {
+    private func parseError(data: Data, status: Int) -> LoomupError {
         if let body = try? JSONDecoder().decode(ErrorBody.self, from: data) {
             let msg = body.error?.message ?? body.message ?? String(data: data, encoding: .utf8) ?? "HTTP \(status)"
-            return LitebaseError(msg, code: body.error?.code, status: status)
+            return LoomupError(msg, code: body.error?.code, status: status)
         }
         let text = String(data: data, encoding: .utf8) ?? "HTTP \(status)"
-        return LitebaseError(text, code: nil, status: status)
+        return LoomupError(text, code: nil, status: status)
     }
 
     private func encodeJSON(_ value: some Encodable) throws -> Data {
@@ -514,21 +514,21 @@ public final class LitebaseClient: @unchecked Sendable {
             _ = try await request(method: "DELETE", path: "/push/devices?token=\(q)")
             return
         }
-        throw LitebaseError("id or token required to unregister device", code: "bad_request")
+        throw LoomupError("id or token required to unregister device", code: "bad_request")
     }
 
     public func refresh() async throws -> AuthTokens {
         lock.lock()
         guard let rt = refreshToken else {
             lock.unlock()
-            throw LitebaseError("no refresh token", code: "no_refresh")
+            throw LoomupError("no refresh token", code: "no_refresh")
         }
         if let existing = refreshingTask {
             lock.unlock()
             return try await existing.value
         }
         let task = Task<AuthTokens, Error> { [weak self] in
-            guard let self else { throw LitebaseError("client deallocated", code: "gone") }
+            guard let self else { throw LoomupError("client deallocated", code: "gone") }
             struct Body: Encodable { let refresh_token: String }
             let body = try self.encodeJSON(Body(refresh_token: rt))
             let env: DataEnvelope<AuthTokens> = try await self.requestJSON(
@@ -651,7 +651,7 @@ public final class LitebaseClient: @unchecked Sendable {
         while true {
             if isWsOpen() { return }
             if Date().timeIntervalSince(start) * 1000 > Double(timeoutMs) {
-                throw LitebaseError("websocket connect timeout", code: "ws_timeout")
+                throw LoomupError("websocket connect timeout", code: "ws_timeout")
             }
             try await Task.sleep(nanoseconds: 25_000_000)
         }
@@ -673,7 +673,7 @@ public final class LitebaseClient: @unchecked Sendable {
         socket?.close()
         for (_, p) in pending {
             p.workItem.cancel()
-            p.continuation.resume(throwing: LitebaseError(
+            p.continuation.resume(throwing: LoomupError(
                 "realtime closed before subscribe acknowledgement",
                 code: "realtime_closed"
             ))
@@ -903,7 +903,7 @@ public final class LitebaseClient: @unchecked Sendable {
                 self.lock.lock()
                 if self.pendingSubscribeAcks.removeValue(forKey: requestId) != nil {
                     self.lock.unlock()
-                    cont.resume(throwing: LitebaseError(
+                    cont.resume(throwing: LoomupError(
                         "subscribe acknowledgement timeout",
                         code: "subscribe_timeout"
                     ))
@@ -934,7 +934,7 @@ public final class LitebaseClient: @unchecked Sendable {
             pending.continuation.resume()
         } else if data.type == "error" {
             let msg = data.message ?? data.code ?? "subscribe failed"
-            pending.continuation.resume(throwing: LitebaseError(msg, code: data.code))
+            pending.continuation.resume(throwing: LoomupError(msg, code: data.code))
         }
     }
 

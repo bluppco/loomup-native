@@ -1,4 +1,4 @@
-import 'package:litebase/litebase.dart';
+import 'package:loomup/loomup.dart';
 import 'package:test/test.dart';
 
 import 'mocks.dart';
@@ -98,7 +98,7 @@ void main() {
     try {
       await c.refresh();
       fail('expected throw');
-    } on LitebaseException catch (e) {
+    } on LoomupException catch (e) {
       expect(e.code, 'no_refresh');
     }
   });

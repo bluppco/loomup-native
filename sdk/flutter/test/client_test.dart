@@ -1,4 +1,4 @@
-import 'package:litebase/litebase.dart';
+import 'package:loomup/loomup.dart';
 import 'package:test/test.dart';
 
 import 'mocks.dart';
@@ -20,8 +20,8 @@ void main() {
     expect(c.auth, isNotNull);
   });
 
-  test('LitebaseException carries code', () {
-    const e = LitebaseException('nope', code: 'forbidden', status: 403);
+  test('LoomupException carries code', () {
+    const e = LoomupException('nope', code: 'forbidden', status: 403);
     expect(e.code, 'forbidden');
     expect(e.status, 403);
     expect(e.message, 'nope');
@@ -168,7 +168,7 @@ void main() {
     try {
       await c.from('todos').get(1);
       fail('expected throw');
-    } on LitebaseException catch (e) {
+    } on LoomupException catch (e) {
       expect(e.code, 'forbidden');
       expect(e.status, 403);
       expect(e.message, 'nope');

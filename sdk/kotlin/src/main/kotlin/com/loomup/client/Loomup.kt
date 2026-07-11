@@ -1,12 +1,12 @@
-package com.litebase.client
+package com.loomup.client
 
 /**
- * Litebase — Kotlin client for Litebase Realtime.
+ * Loomup — Kotlin client for Loomup Realtime.
  *
- * Mirrors the TypeScript `@litebase/client` and Swift `Litebase` SDKs:
+ * Mirrors the TypeScript `@loomup/client` and Swift `Loomup` SDKs:
  *
  * ```kotlin
- * import com.litebase.client.createClient
+ * import com.loomup.client.createClient
  *
  * val client = createClient(url = "http://127.0.0.1:3000")
  * val tokens = client.auth.signUp(email = "a@b.com", password = "secret12")
@@ -22,7 +22,7 @@ package com.litebase.client
  * ```
  */
 
-data class LitebaseClientOptions(
+data class LoomupClientOptions(
     val url: String,
     val token: String? = null,
     val refreshToken: String? = null,
@@ -30,16 +30,16 @@ data class LitebaseClientOptions(
     val webSocketFactory: WebSocketFactory? = null,
 )
 
-/** Create a Litebase client (TypeScript `createClient` equivalent). */
+/** Create a Loomup client (TypeScript `createClient` equivalent). */
 fun createClient(
     url: String,
     token: String? = null,
     refreshToken: String? = null,
     http: HttpTransport = OkHttpHttpTransport(),
     webSocketFactory: WebSocketFactory? = null,
-): LitebaseClient {
-    return LitebaseClient(
-        LitebaseClientOptions(
+): LoomupClient {
+    return LoomupClient(
+        LoomupClientOptions(
             url = url,
             token = token,
             refreshToken = refreshToken,

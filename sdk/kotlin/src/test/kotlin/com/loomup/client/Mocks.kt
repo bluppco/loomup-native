@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -26,7 +26,7 @@ class MockHttp : HttpTransport {
     override suspend fun execute(request: HttpRequest): HttpResponse {
         val auth = request.headers["Authorization"]
         calls.add(Call(request.method, request.url, auth, request.body))
-        val h = handler ?: throw LitebaseError("no mock handler", code = "test")
+        val h = handler ?: throw LoomupError("no mock handler", code = "test")
         val (data, status) = h(request.method, request.url, auth, request.body)
         return HttpResponse(status = status, body = data)
     }

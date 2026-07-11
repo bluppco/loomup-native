@@ -1,5 +1,5 @@
 import XCTest
-@testable import Litebase
+@testable import Loomup
 
 final class AuthRefreshTests: XCTestCase {
     func testOn401RefreshesOnceAndRetries() async throws {
@@ -95,7 +95,7 @@ final class AuthRefreshTests: XCTestCase {
         do {
             _ = try await c.refresh()
             XCTFail("expected throw")
-        } catch let e as LitebaseError {
+        } catch let e as LoomupError {
             XCTAssertEqual(e.code, "no_refresh")
         } catch {
             XCTFail("wrong error \(error)")

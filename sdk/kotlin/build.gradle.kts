@@ -4,7 +4,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.litebase"
+group = "com.loomup"
 version = "0.1.0"
 
 repositories {
@@ -43,7 +43,7 @@ publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
-            groupId = "com.litebase"
+            groupId = "com.loomup"
             artifactId = "client"
             version = project.version.toString()
         }

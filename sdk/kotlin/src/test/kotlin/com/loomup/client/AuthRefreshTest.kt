@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -103,7 +103,7 @@ class AuthRefreshTest {
     @Test
     fun refreshWithoutTokenThrows() = runBlocking {
         val c = createClient(url = "http://example.test")
-        val e = assertFailsWith<LitebaseError> {
+        val e = assertFailsWith<LoomupError> {
             c.refresh()
         }
         assertEquals("no_refresh", e.code)

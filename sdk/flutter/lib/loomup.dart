@@ -1,15 +1,15 @@
-/// Litebase Dart client — auth, REST CRUD, and WebSocket subscriptions.
+/// Loomup Dart client — auth, REST CRUD, and WebSocket subscriptions.
 ///
 /// Works with Flutter and pure Dart (no Flutter framework dependency).
 library;
 
 export 'src/client.dart'
     show
-        LitebaseClient,
-        LitebaseClientOptions,
+        LoomupClient,
+        LoomupClientOptions,
         createClient,
         AuthAPI;
-export 'src/errors.dart' show LitebaseException;
+export 'src/errors.dart' show LoomupException;
 export 'src/http_transport.dart'
     show HttpTransport, HttpTransportResponse, PackageHttpTransport;
 export 'src/models.dart'

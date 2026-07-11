@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -265,7 +265,7 @@ class RealtimeTest {
             url = "http://example.test",
             webSocketFactory = box.factory(),
         )
-        val e = assertFailsWith<LitebaseError> {
+        val e = assertFailsWith<LoomupError> {
             c.from("todos").subscribeReady(timeoutMs = 80) { }
         }
         assertTrue(
@@ -304,7 +304,7 @@ class RealtimeTest {
             url = "http://example.test",
             webSocketFactory = factory,
         )
-        val e = assertFailsWith<LitebaseError> {
+        val e = assertFailsWith<LoomupError> {
             c.from("todos").subscribeReady(timeoutMs = 2000) { }
         }
         assertTrue(

@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -26,8 +26,8 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.random.Random
 
-/** Litebase Realtime client: REST + WebSocket subscriptions. */
-class LitebaseClient(options: LitebaseClientOptions) {
+/** Loomup Realtime client: REST + WebSocket subscriptions. */
+class LoomupClient(options: LoomupClientOptions) {
     val url: String
 
     private val http: HttpTransport
@@ -103,7 +103,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
     val push: PushAPI = PushAPI(this)
     val storage: StorageAPI = StorageAPI(this)
 
-    class AuthAPI internal constructor(private val client: LitebaseClient) {
+    class AuthAPI internal constructor(private val client: LoomupClient) {
         suspend fun signUp(email: String, password: String): AuthTokens =
             client.signUp(email, password)
 
@@ -125,7 +125,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
         suspend fun refresh(): AuthTokens = client.refresh()
     }
 
-    class PushAPI internal constructor(private val client: LitebaseClient) {
+    class PushAPI internal constructor(private val client: LoomupClient) {
         suspend fun registerDevice(
             token: String,
             provider: String,
@@ -148,14 +148,14 @@ class LitebaseClient(options: LitebaseClientOptions) {
             client.unregisterPushDevice(id = id, token = token)
     }
 
-    class StorageAPI internal constructor(private val client: LitebaseClient) {
+    class StorageAPI internal constructor(private val client: LoomupClient) {
         suspend fun listBuckets(): List<StorageBucketInfo> = client.listStorageBuckets()
 
         fun from(bucket: String): StorageBucket = StorageBucket(client, bucket)
     }
 
     class StorageBucket internal constructor(
-        private val client: LitebaseClient,
+        private val client: LoomupClient,
         val bucket: String,
     ) {
         private fun objectPath(path: String): String {
@@ -171,7 +171,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
         ): StorageObject {
             val headers = linkedMapOf<String, String>()
             if (contentType != null) headers["Content-Type"] = contentType
-            if (upsert) headers["x-lb-upsert"] = "true"
+            if (upsert) headers["x-loomup-upsert"] = "true"
             val env = client.requestJson<DataEnvelope<StorageObject>>(
                 method = "POST",
                 path = objectPath(path),
@@ -315,7 +315,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
         return try {
             clientJson.decodeFromString(String(data, StandardCharsets.UTF_8))
         } catch (e: Exception) {
-            throw LitebaseError(
+            throw LoomupError(
                 "failed to decode response: ${e.message}",
                 code = "decode_error",
             )
@@ -325,14 +325,14 @@ class LitebaseClient(options: LitebaseClientOptions) {
     @PublishedApi
     internal val clientJson: Json get() = json
 
-    private fun parseError(data: ByteArray, status: Int): LitebaseError {
+    private fun parseError(data: ByteArray, status: Int): LoomupError {
         val text = String(data, StandardCharsets.UTF_8)
         return try {
             val body = json.decodeFromString<ErrorBody>(text)
             val msg = body.error?.message ?: body.message ?: text.ifEmpty { "HTTP $status" }
-            LitebaseError(msg, code = body.error?.code, status = status)
+            LoomupError(msg, code = body.error?.code, status = status)
         } catch (_: Exception) {
-            LitebaseError(text.ifEmpty { "HTTP $status" }, code = null, status = status)
+            LoomupError(text.ifEmpty { "HTTP $status" }, code = null, status = status)
         }
     }
 
@@ -407,13 +407,13 @@ class LitebaseClient(options: LitebaseClientOptions) {
                 val q = java.net.URLEncoder.encode(token, "UTF-8")
                 request("DELETE", "/push/devices?token=$q")
             }
-            else -> throw LitebaseError("id or token required to unregister device", code = "bad_request")
+            else -> throw LoomupError("id or token required to unregister device", code = "bad_request")
         }
     }
 
     suspend fun refresh(): AuthTokens {
         val rt = refreshToken
-            ?: throw LitebaseError("no refresh token", code = "no_refresh")
+            ?: throw LoomupError("no refresh token", code = "no_refresh")
 
         val existingOrNew = lock.withLock {
             refreshingDeferred?.let { return@withLock it to false }
@@ -534,7 +534,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
         while (true) {
             if (isWsOpen()) return
             if (System.currentTimeMillis() - start > timeoutMs) {
-                throw LitebaseError("websocket connect timeout", code = "ws_timeout")
+                throw LoomupError("websocket connect timeout", code = "ws_timeout")
             }
             delay(25)
         }
@@ -555,7 +555,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
         for ((_, p) in pending) {
             p.timeoutJob.cancel()
             p.deferred.completeExceptionally(
-                LitebaseError(
+                LoomupError(
                     "realtime closed before subscribe acknowledgement",
                     code = "realtime_closed",
                 ),
@@ -748,7 +748,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
             val removed = pendingSubscribeAcks.remove(requestId)
             if (removed != null) {
                 deferred.completeExceptionally(
-                    LitebaseError(
+                    LoomupError(
                         "subscribe acknowledgement timeout",
                         code = "subscribe_timeout",
                     ),
@@ -767,7 +767,7 @@ class LitebaseClient(options: LitebaseClientOptions) {
             pending.deferred.complete(Unit)
         } else if (data.type == "error") {
             val msg = data.message ?: data.code ?: "subscribe failed"
-            pending.deferred.completeExceptionally(LitebaseError(msg, code = data.code))
+            pending.deferred.completeExceptionally(LoomupError(msg, code = data.code))
         }
     }
 

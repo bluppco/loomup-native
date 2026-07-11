@@ -1,10 +1,9 @@
-name: litebase
+name: loomup
 description: >
-  Dart client for Litebase Realtime — auth, REST CRUD, and WebSocket subscriptions.
+  Dart client for Loomup Realtime — auth, REST CRUD, and WebSocket subscriptions.
   Works with Flutter and pure Dart (no Flutter framework dependency).
 version: 0.1.0
-repository: https://github.com/YOUR_ORG/litebase
-homepage: https://github.com/YOUR_ORG/litebase
+homepage: https://tryloomup.com
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

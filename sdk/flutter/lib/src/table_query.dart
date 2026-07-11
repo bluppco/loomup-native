@@ -7,7 +7,7 @@ import 'realtime_url.dart';
 
 /// Fluent table accessor: CRUD + realtime for one table name.
 class TableQuery {
-  final LitebaseClient _client;
+  final LoomupClient _client;
   final String table;
 
   TableQuery(this._client, this.table);

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Litebase
+@testable import Loomup
 
 final class ClientTests: XCTestCase {
     func testCreateClientStoresUrlAndToken() {
@@ -19,8 +19,8 @@ final class ClientTests: XCTestCase {
         XCTAssertNotNil(c.auth)
     }
 
-    func testLitebaseErrorCarriesCode() {
-        let e = LitebaseError("nope", code: "forbidden", status: 403)
+    func testLoomupErrorCarriesCode() {
+        let e = LoomupError("nope", code: "forbidden", status: 403)
         XCTAssertEqual(e.code, "forbidden")
         XCTAssertEqual(e.status, 403)
         XCTAssertEqual(e.message, "nope")

@@ -1,6 +1,6 @@
-# Litebase Dart / Flutter SDK
+# Loomup Dart / Flutter SDK
 
-Dart client for [Litebase Realtime](../../README.md) — auth, REST CRUD, and WebSocket subscriptions.
+Dart client for [Loomup Realtime](../../README.md) — auth, REST CRUD, and WebSocket subscriptions.
 
 Works with **Flutter** and **pure Dart**. No Flutter framework dependency (v1).
 
@@ -14,7 +14,7 @@ In your app’s `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  litebase:
+  loomup:
     path: ../path/to/base/sdk/flutter
 ```
 
@@ -22,7 +22,7 @@ dependencies:
 
 ```yaml
 dependencies:
-  litebase: ^0.1.0
+  loomup: ^0.1.0
 ```
 
 Then:
@@ -35,7 +35,7 @@ dart pub get
 ## Quick start
 
 ```dart
-import 'package:litebase/litebase.dart';
+import 'package:loomup/loomup.dart';
 
 final client = createClient(url: 'http://127.0.0.1:3000');
 

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:litebase/litebase.dart';
+import 'package:loomup/loomup.dart';
 import 'package:test/test.dart';
 
 import 'mocks.dart';
@@ -213,7 +213,7 @@ void main() {
     try {
       await c.from('todos').subscribeReady((_) {});
       fail('expected throw');
-    } on LitebaseException catch (e) {
+    } on LoomupException catch (e) {
       expect(e.message, 'forbidden');
       expect(e.code, 'SUBSCRIBE_ERROR');
     }
@@ -306,7 +306,7 @@ void main() {
     try {
       await ready;
       fail('expected throw');
-    } on LitebaseException catch (e) {
+    } on LoomupException catch (e) {
       expect(e.code, 'realtime_closed');
     }
   });

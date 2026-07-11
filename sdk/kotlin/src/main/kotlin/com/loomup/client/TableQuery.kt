@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets
 
 /** Fluent table accessor: CRUD + realtime for one table name. */
 class TableQuery internal constructor(
-    private val client: LitebaseClient,
+    private val client: LoomupClient,
     private val table: String,
 ) {
     private val json = Json {

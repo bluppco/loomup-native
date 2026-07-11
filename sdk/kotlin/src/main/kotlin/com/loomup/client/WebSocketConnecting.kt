@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import okhttp3.OkHttpClient
 import okhttp3.Request

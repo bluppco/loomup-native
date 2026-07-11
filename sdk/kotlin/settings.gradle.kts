@@ -1,1 +1,1 @@
-rootProject.name = "litebase-client"
+rootProject.name = "loomup-client"

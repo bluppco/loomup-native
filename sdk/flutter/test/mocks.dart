@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:litebase/litebase.dart';
+import 'package:loomup/loomup.dart';
 
 /// Mock HTTP transport for unit tests.
 class MockHttp implements HttpTransport {
@@ -30,7 +30,7 @@ class MockHttp implements HttpTransport {
     ));
     final h = handler;
     if (h == null) {
-      throw const LitebaseException('no mock handler', code: 'test');
+      throw const LoomupException('no mock handler', code: 'test');
     }
     final result = await h(method, url.toString(), auth, body);
     return HttpTransportResponse(

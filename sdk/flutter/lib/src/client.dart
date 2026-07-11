@@ -12,7 +12,7 @@ import 'table_query.dart';
 import 'websocket.dart';
 
 /// Options for constructing a client.
-class LitebaseClientOptions {
+class LoomupClientOptions {
   final String url;
   final String? token;
   final String? refreshToken;
@@ -20,7 +20,7 @@ class LitebaseClientOptions {
   final WebSocketFactory? webSocketFactory;
   final void Function(AuthTokens? tokens)? onTokens;
 
-  const LitebaseClientOptions({
+  const LoomupClientOptions({
     required this.url,
     this.token,
     this.refreshToken,
@@ -30,8 +30,8 @@ class LitebaseClientOptions {
   });
 }
 
-/// Create a Litebase client (TypeScript / Swift `createClient` equivalent).
-LitebaseClient createClient({
+/// Create a Loomup client (TypeScript / Swift `createClient` equivalent).
+LoomupClient createClient({
   required String url,
   String? token,
   String? refreshToken,
@@ -39,8 +39,8 @@ LitebaseClient createClient({
   WebSocketFactory? webSocketFactory,
   void Function(AuthTokens? tokens)? onTokens,
 }) {
-  return LitebaseClient(
-    LitebaseClientOptions(
+  return LoomupClient(
+    LoomupClientOptions(
       url: url,
       token: token,
       refreshToken: refreshToken,
@@ -51,8 +51,8 @@ LitebaseClient createClient({
   );
 }
 
-/// Litebase Realtime client: REST + WebSocket subscriptions.
-class LitebaseClient {
+/// Loomup Realtime client: REST + WebSocket subscriptions.
+class LoomupClient {
   late final Uri url;
   final HttpTransport _http;
   final WebSocketFactory _webSocketFactory;
@@ -73,7 +73,7 @@ class LitebaseClient {
   Future<AuthTokens>? _refreshing;
   final _rng = Random();
 
-  LitebaseClient(LitebaseClientOptions options)
+  LoomupClient(LoomupClientOptions options)
       : _http = options.http ?? PackageHttpTransport(),
         _webSocketFactory =
             options.webSocketFactory ?? (() => WebSocketChannelConnection()),
@@ -161,7 +161,7 @@ class LitebaseClient {
     final decoded = jsonDecode(utf8.decode(data));
     if (decoded is Map<String, dynamic>) return decoded;
     if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    throw const LitebaseException(
+    throw const LoomupException(
       'failed to decode response',
       code: 'decode_error',
     );
@@ -279,13 +279,13 @@ class LitebaseClient {
     final decoded = jsonDecode(utf8.decode(bytes));
     if (decoded is Map<String, dynamic>) return decoded;
     if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    throw const LitebaseException(
+    throw const LoomupException(
       'failed to decode storage response',
       code: 'decode_error',
     );
   }
 
-  LitebaseException _parseError(String text, int status) {
+  LoomupException _parseError(String text, int status) {
     try {
       final json = jsonDecode(text);
       if (json is Map) {
@@ -294,14 +294,14 @@ class LitebaseClient {
           final msg = err['message']?.toString() ??
               json['message']?.toString() ??
               text;
-          return LitebaseException(
+          return LoomupException(
             msg,
             code: err['code']?.toString(),
             status: status,
           );
         }
         if (json['message'] != null) {
-          return LitebaseException(
+          return LoomupException(
             json['message'].toString(),
             status: status,
           );
@@ -310,7 +310,7 @@ class LitebaseClient {
     } catch (_) {
       // ignore decode errors
     }
-    return LitebaseException(
+    return LoomupException(
       text.isNotEmpty ? text : 'HTTP $status',
       status: status,
     );
@@ -362,7 +362,7 @@ class LitebaseClient {
   Future<AuthTokens> refresh() async {
     final rt = _refreshToken;
     if (rt == null) {
-      throw const LitebaseException('no refresh token', code: 'no_refresh');
+      throw const LoomupException('no refresh token', code: 'no_refresh');
     }
     if (_refreshing != null) {
       return _refreshing!;
@@ -436,7 +436,7 @@ class LitebaseClient {
       );
       return;
     }
-    throw const LitebaseException(
+    throw const LoomupException(
       'id or token required to unregister device',
       code: 'bad_request',
     );
@@ -542,13 +542,13 @@ class LitebaseClient {
     while (true) {
       if (_isWsOpen()) return;
       if (_intentionalClose) {
-        throw const LitebaseException(
+        throw const LoomupException(
           'realtime closed before subscribe acknowledgement',
           code: 'realtime_closed',
         );
       }
       if (DateTime.now().difference(start).inMilliseconds > timeoutMs) {
-        throw const LitebaseException(
+        throw const LoomupException(
           'websocket connect timeout',
           code: 'ws_timeout',
         );
@@ -573,7 +573,7 @@ class LitebaseClient {
       p.timer.cancel();
       if (!p.completer.isCompleted) {
         p.completer.completeError(
-          const LitebaseException(
+          const LoomupException(
             'realtime closed before subscribe acknowledgement',
             code: 'realtime_closed',
           ),
@@ -722,7 +722,7 @@ class LitebaseClient {
       final pending = _pendingSubscribeAcks.remove(requestId);
       if (pending != null && !pending.completer.isCompleted) {
         pending.completer.completeError(
-          const LitebaseException(
+          const LoomupException(
             'subscribe acknowledgement timeout',
             code: 'subscribe_timeout',
           ),
@@ -747,7 +747,7 @@ class LitebaseClient {
       pending.completer.complete();
     } else if (data.type == 'error') {
       pending.completer.completeError(
-        LitebaseException(
+        LoomupException(
           data.message ?? data.code ?? 'subscribe failed',
           code: data.code,
         ),
@@ -849,7 +849,7 @@ int _asIntLocal(Object? value) {
 
 /// Auth methods namespace (`client.auth.*`).
 class AuthAPI {
-  final LitebaseClient _client;
+  final LoomupClient _client;
 
   AuthAPI(this._client);
 

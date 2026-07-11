@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -26,8 +26,8 @@ class ClientTest {
     }
 
     @Test
-    fun litebaseErrorCarriesCode() {
-        val e = LitebaseError("nope", code = "forbidden", status = 403)
+    fun loomupErrorCarriesCode() {
+        val e = LoomupError("nope", code = "forbidden", status = 403)
         assertEquals("forbidden", e.code)
         assertEquals(403, e.status)
         assertEquals("nope", e.message)

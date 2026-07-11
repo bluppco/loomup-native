@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Litebase",
+    name: "Loomup",
     platforms: [
         .iOS(.v15),
         .macOS(.v12),
@@ -10,13 +10,13 @@ let package = Package(
         .watchOS(.v8),
     ],
     products: [
-        .library(name: "Litebase", targets: ["Litebase"]),
+        .library(name: "Loomup", targets: ["Loomup"]),
     ],
     targets: [
-        .target(name: "Litebase"),
+        .target(name: "Loomup"),
         .testTarget(
-            name: "LitebaseTests",
-            dependencies: ["Litebase"]
+            name: "LoomupTests",
+            dependencies: ["Loomup"]
         ),
     ]
 )

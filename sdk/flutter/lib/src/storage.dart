@@ -75,7 +75,7 @@ String encodeObjectPath(String path) {
 
 /// Bucket-scoped object storage API.
 class StorageBucket {
-  final LitebaseClient _client;
+  final LoomupClient _client;
   final String bucket;
 
   StorageBucket(this._client, this.bucket);
@@ -92,7 +92,7 @@ class StorageBucket {
   }) async {
     final headers = <String, String>{};
     if (contentType != null) headers['Content-Type'] = contentType;
-    if (upsert) headers['x-lb-upsert'] = 'true';
+    if (upsert) headers['x-loomup-upsert'] = 'true';
     final json = await _client.requestStorageJson(
       'POST',
       _objectUrl(path),
@@ -101,7 +101,7 @@ class StorageBucket {
     );
     final dataMap = json['data'];
     if (dataMap is! Map) {
-      throw const LitebaseException('invalid storage upload response', code: 'decode_error');
+      throw const LoomupException('invalid storage upload response', code: 'decode_error');
     }
     return StorageObject.fromJson(Map<String, dynamic>.from(dataMap));
   }
@@ -147,15 +147,15 @@ class StorageBucket {
     final json = await _client.requestStorageJson('DELETE', _objectUrl(path));
     final dataMap = json['data'];
     if (dataMap is! Map) {
-      throw const LitebaseException('invalid storage delete response', code: 'decode_error');
+      throw const LoomupException('invalid storage delete response', code: 'decode_error');
     }
     return StorageObject.fromJson(Map<String, dynamic>.from(dataMap));
   }
 }
 
-/// Top-level storage API on [LitebaseClient].
+/// Top-level storage API on [LoomupClient].
 class StorageAPI {
-  final LitebaseClient _client;
+  final LoomupClient _client;
   StorageAPI(this._client);
 
   Future<List<StorageBucketInfo>> listBuckets() async {

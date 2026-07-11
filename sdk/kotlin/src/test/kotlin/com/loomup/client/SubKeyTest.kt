@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

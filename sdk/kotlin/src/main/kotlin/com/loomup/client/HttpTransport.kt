@@ -1,4 +1,4 @@
-package com.litebase.client
+package com.loomup.client
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
