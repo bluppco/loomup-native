@@ -141,11 +141,13 @@ public enum WhereValue: Sendable, Equatable {
     case int(Int)
     case double(Double)
     case bool(Bool)
+    case list([WhereValue])
 
     public init(_ value: String) { self = .string(value) }
     public init(_ value: Int) { self = .int(value) }
     public init(_ value: Double) { self = .double(value) }
     public init(_ value: Bool) { self = .bool(value) }
+    public init(_ value: [WhereValue]) { self = .list(value) }
 
     /// Query-string form. Booleans become `"1"` / `"0"` to match SQLite storage.
     public var queryString: String {
@@ -154,6 +156,7 @@ public enum WhereValue: Sendable, Equatable {
         case .int(let i): return String(i)
         case .double(let d): return String(d)
         case .bool(let b): return b ? "1" : "0"
+        case .list(let values): return values.map(\.queryString).joined(separator: ",")
         }
     }
 }

@@ -134,16 +134,20 @@ object JsonValueSerializer : KSerializer<JsonValue> {
 sealed class WhereValue {
     data class String(val value: kotlin.String) : WhereValue()
     data class Int(val value: kotlin.Int) : WhereValue()
+    data class Long(val value: kotlin.Long) : WhereValue()
     data class Double(val value: kotlin.Double) : WhereValue()
     data class Bool(val value: Boolean) : WhereValue()
+    data class Many(val values: kotlin.collections.List<WhereValue>) : WhereValue()
 
     /** Query-string form. Booleans become `"1"` / `"0"` to match SQLite storage. */
     val queryString: kotlin.String
         get() = when (this) {
             is String -> value
             is Int -> value.toString()
+            is Long -> value.toString()
             is Double -> value.toString()
             is Bool -> if (value) "1" else "0"
+            is Many -> values.joinToString(",") { it.queryString }
         }
 
     companion object {
@@ -151,6 +155,7 @@ sealed class WhereValue {
         fun of(value: kotlin.Int): WhereValue = Int(value)
         fun of(value: kotlin.Double): WhereValue = Double(value)
         fun of(value: Boolean): WhereValue = Bool(value)
-        fun of(value: Long): WhereValue = Int(value.toInt())
+        fun of(value: kotlin.Long): WhereValue = Long(value)
+        fun many(vararg values: WhereValue): WhereValue = Many(values.toList())
     }
 }

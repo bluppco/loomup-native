@@ -23,8 +23,10 @@ class TableQuery internal constructor(
         sort: String? = null,
         limit: Int? = null,
         offset: Int? = null,
+        cursor: String? = null,
     ): ListResult {
         val items = mutableListOf<Pair<String, String>>()
+        if (cursor != null) items.add("cursor" to cursor)
         if (limit != null) items.add("limit" to limit.toString())
         if (offset != null) items.add("offset" to offset.toString())
         if (sort != null) items.add("sort" to sort)

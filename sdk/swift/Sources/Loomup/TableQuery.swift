@@ -16,9 +16,11 @@ public struct TableQuery: Sendable {
         select: [String]? = nil,
         sort: String? = nil,
         limit: Int? = nil,
-        offset: Int? = nil
+        offset: Int? = nil,
+        cursor: String? = nil
     ) async throws -> ListResult {
         var items: [URLQueryItem] = []
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
         if let limit { items.append(URLQueryItem(name: "limit", value: String(limit))) }
         if let offset { items.append(URLQueryItem(name: "offset", value: String(offset))) }
         if let sort { items.append(URLQueryItem(name: "sort", value: sort)) }

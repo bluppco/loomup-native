@@ -74,6 +74,8 @@ data class ListMeta(
     val total: Int,
     /** Present when rule-filtered list hit the server scan cap; total is a lower bound. */
     val truncated: Boolean? = null,
+    /** Signed opaque cursor for the next page. Null on the final page. */
+    @SerialName("next_cursor") val nextCursor: String? = null,
 )
 
 data class ListResult(
@@ -109,6 +111,7 @@ typealias ControlHandler = (ControlEvent) -> Unit
 typealias Unsubscribe = () -> Unit
 
 @Serializable
+@PublishedApi
 internal data class DataEnvelope<T>(val data: T)
 
 @Serializable

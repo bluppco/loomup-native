@@ -22,8 +22,10 @@ class TableQuery {
     String? sort,
     int? limit,
     int? offset,
+    String? cursor,
   }) async {
     final params = <String, String>{};
+    if (cursor != null) params['cursor'] = cursor;
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null) params['offset'] = offset.toString();
     if (sort != null) params['sort'] = sort;

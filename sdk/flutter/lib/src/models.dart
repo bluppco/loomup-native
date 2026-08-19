@@ -159,12 +159,15 @@ class ListMeta {
 
   /// Present when rule-filtered list hit the server scan cap; [total] is a lower bound.
   final bool? truncated;
+  /// Signed opaque cursor for the next page. Null on the final page.
+  final String? nextCursor;
 
   const ListMeta({
     required this.limit,
     required this.offset,
     required this.total,
     this.truncated,
+    this.nextCursor,
   });
 
   factory ListMeta.fromJson(Map<String, dynamic> json) {
@@ -173,6 +176,7 @@ class ListMeta {
       offset: _asInt(json['offset']),
       total: _asInt(json['total']),
       truncated: json['truncated'] as bool?,
+      nextCursor: json['next_cursor'] as String?,
     );
   }
 }

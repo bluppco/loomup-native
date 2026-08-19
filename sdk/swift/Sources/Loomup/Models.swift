@@ -138,12 +138,20 @@ public struct ListMeta: Codable, Sendable, Equatable {
     public var total: Int
     /// Present when rule-filtered list hit the server scan cap; total is a lower bound.
     public var truncated: Bool?
+    /// Signed opaque cursor for the next page. Nil on the final page.
+    public var nextCursor: String?
 
-    public init(limit: Int, offset: Int, total: Int, truncated: Bool? = nil) {
+    public init(limit: Int, offset: Int, total: Int, truncated: Bool? = nil, nextCursor: String? = nil) {
         self.limit = limit
         self.offset = offset
         self.total = total
         self.truncated = truncated
+        self.nextCursor = nextCursor
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case limit, offset, total, truncated
+        case nextCursor = "next_cursor"
     }
 }
 
