@@ -43,5 +43,36 @@ export 'src/realtime_url.dart'
         unixSecondsNow;
 export 'src/sub_key.dart' show makeSubKey, parseSubKey;
 export 'src/table_query.dart' show TableQuery;
+export 'src/operations.dart'
+    show
+        OperationMeta,
+        OperationResponse,
+        BatchItemResult,
+        JobLease,
+        LoomupOperations;
+export 'src/sync_models.dart'
+    show
+        SyncRecord,
+        SyncResourceSnapshot,
+        SyncBootstrapResponse,
+        SyncEvent,
+        SyncPullResponse,
+        SyncMutation,
+        SyncMutationError,
+        SyncMutationResult,
+        SyncMutationResponse,
+        SyncTransport,
+        LoomupSyncTransport;
+export 'src/offline_store.dart'
+    show
+        SyncStorage,
+        MemorySyncStorage,
+        SQLiteSyncDatabase,
+        SQLiteSyncStorage,
+        OfflinePhase,
+        OfflineStatus,
+        OfflineConflict,
+        OfflineStore,
+        LoomupOfflineClient;
 export 'src/websocket.dart'
     show WebSocketChannelConnection, WebSocketConnecting, WebSocketFactory;

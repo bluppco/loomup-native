@@ -42,6 +42,20 @@ unsub()
 client.closeRealtime()
 ```
 
+## Offline SQLite
+
+```swift
+let storage = try SQLiteSyncStorage(url: localDatabaseURL)
+let offline = try await client.offline(resources: ["todos"], storage: storage)
+
+try await offline.create("todos", data: ["title": "Queued locally"])
+for await status in await offline.statusStream() {
+    print(status.phase, status.pending)
+}
+```
+
+The SDK owns its small internal SQLite state table, mutation queue, cursors, reset recovery, and realtime invalidation. Your app does not write SQL or run a migration. Use `MemorySyncStorage` in tests and call `await offline.close()` when finished.
+
 ## Tokens
 
 - `setToken(_:)` re-authenticates an open WebSocket and re-sends all active subscriptions.
@@ -69,5 +83,6 @@ cd sdk/swift && swift test
 | Auth | `signUp` / `register`, `signIn` / `login`, `signOut` / `logout`, `me`, `refresh` |
 | CRUD | `from(table).select/get/insert/update/delete` |
 | Realtime | `subscribe`, `subscribeReady`, `onControl`, `closeRealtime` |
+| Offline | `offline`, `find/get/create/update/remove`, `statusStream`, `sync`, `setOnline` |
 
 Row payloads use `JSONValue` (dynamic tables; Swift codegen is a future enhancement).

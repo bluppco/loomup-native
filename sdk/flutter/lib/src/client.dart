@@ -16,6 +16,8 @@ class LoomupClientOptions {
   final String url;
   final String? token;
   final String? refreshToken;
+  final String? publishableKey;
+  final String? serviceKey;
   final HttpTransport? http;
   final WebSocketFactory? webSocketFactory;
   final void Function(AuthTokens? tokens)? onTokens;
@@ -24,6 +26,8 @@ class LoomupClientOptions {
     required this.url,
     this.token,
     this.refreshToken,
+    this.publishableKey,
+    this.serviceKey,
     this.http,
     this.webSocketFactory,
     this.onTokens,
@@ -35,6 +39,8 @@ LoomupClient createClient({
   required String url,
   String? token,
   String? refreshToken,
+  String? publishableKey,
+  String? serviceKey,
   HttpTransport? http,
   WebSocketFactory? webSocketFactory,
   void Function(AuthTokens? tokens)? onTokens,
@@ -44,6 +50,8 @@ LoomupClient createClient({
       url: url,
       token: token,
       refreshToken: refreshToken,
+      publishableKey: publishableKey,
+      serviceKey: serviceKey,
       http: http,
       webSocketFactory: webSocketFactory,
       onTokens: onTokens,
@@ -57,6 +65,8 @@ class LoomupClient {
   final HttpTransport _http;
   final WebSocketFactory _webSocketFactory;
   final void Function(AuthTokens? tokens)? _onTokens;
+  final String? _publishableKey;
+  final String? _serviceKey;
 
   String? _token;
   String? _refreshToken;
@@ -77,7 +87,9 @@ class LoomupClient {
       : _http = options.http ?? PackageHttpTransport(),
         _webSocketFactory =
             options.webSocketFactory ?? (() => WebSocketChannelConnection()),
-        _onTokens = options.onTokens {
+        _onTokens = options.onTokens,
+        _publishableKey = options.publishableKey,
+        _serviceKey = options.serviceKey {
     var base = options.url;
     while (base.endsWith('/')) {
       base = base.substring(0, base.length - 1);
@@ -149,12 +161,14 @@ class LoomupClient {
     String method,
     String path, {
     Object? body,
+    Map<String, String>? headers,
     bool skipRetry = false,
   }) async {
     final data = await request(
       method,
       path,
       body: body,
+      headers: headers,
       skipRetry: skipRetry,
     );
     if (data.isEmpty) return {};
@@ -171,18 +185,25 @@ class LoomupClient {
     String method,
     String path, {
     Object? body,
+    Map<String, String>? headers,
     bool skipRetry = false,
   }) async {
-    final headers = <String, String>{
+    final requestHeaders = <String, String>{
       'Accept': 'application/json',
+      ...?headers,
     };
     final access = _token;
     if (access != null) {
-      headers['Authorization'] = 'Bearer $access';
+      requestHeaders['Authorization'] = 'Bearer $access';
+    } else if (_serviceKey != null) {
+      requestHeaders['Authorization'] = 'Bearer $_serviceKey';
+    }
+    if (_publishableKey != null) {
+      requestHeaders['X-Loomup-Key'] = _publishableKey!;
     }
     List<int>? payload;
     if (body != null) {
-      headers['Content-Type'] = 'application/json';
+      requestHeaders['Content-Type'] = 'application/json';
       payload = utf8.encode(jsonEncode(body));
     }
 
@@ -190,7 +211,7 @@ class LoomupClient {
     final res = await _http.request(
       method: method,
       url: fullUrl,
-      headers: headers,
+      headers: requestHeaders,
       body: payload,
     );
 
@@ -202,7 +223,13 @@ class LoomupClient {
         path != '/auth/register') {
       try {
         await refresh();
-        return request(method, path, body: body, skipRetry: true);
+        return request(
+          method,
+          path,
+          body: body,
+          headers: headers,
+          skipRetry: true,
+        );
       } catch (_) {
         // fall through with original error
       }
@@ -229,6 +256,11 @@ class LoomupClient {
     final access = _token;
     if (access != null) {
       h['Authorization'] = 'Bearer $access';
+    } else if (_serviceKey != null) {
+      h['Authorization'] = 'Bearer $_serviceKey';
+    }
+    if (_publishableKey != null) {
+      h['X-Loomup-Key'] = _publishableKey!;
     }
     final res = await _http.request(
       method: method,

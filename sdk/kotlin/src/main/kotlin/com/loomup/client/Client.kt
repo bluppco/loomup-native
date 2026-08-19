@@ -41,6 +41,9 @@ class LoomupClient(options: LoomupClientOptions) {
     @Volatile
     private var refreshToken: String? = null
 
+    private val publishableKey: String?
+    private val serviceKey: String?
+
     // Realtime state
     private var ws: WebSocketConnecting? = null
     private val subs = ConcurrentHashMap<String, ConcurrentHashMap<String, SubscribeHandler>>()
@@ -75,6 +78,8 @@ class LoomupClient(options: LoomupClientOptions) {
         url = options.url.trimEnd('/')
         token = options.token
         refreshToken = options.refreshToken
+        publishableKey = options.publishableKey
+        serviceKey = options.serviceKey
         http = options.http
         webSocketFactory = options.webSocketFactory ?: { OkHttpWebSocketConnection() }
     }
@@ -254,6 +259,11 @@ class LoomupClient(options: LoomupClientOptions) {
         headers.putAll(extraHeaders)
         if (access != null) {
             headers["Authorization"] = "Bearer $access"
+        } else if (serviceKey != null) {
+            headers["Authorization"] = "Bearer $serviceKey"
+        }
+        if (publishableKey != null) {
+            headers["X-Loomup-Key"] = publishableKey
         }
         if (body != null && contentType != null) {
             headers["Content-Type"] = contentType

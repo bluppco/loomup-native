@@ -12,6 +12,8 @@ public struct TableQuery: Sendable {
 
     public func select(
         where whereClause: [String: WhereValue]? = nil,
+        filter: [String: [String: WhereValue]]? = nil,
+        select: [String]? = nil,
         sort: String? = nil,
         limit: Int? = nil,
         offset: Int? = nil
@@ -20,9 +22,28 @@ public struct TableQuery: Sendable {
         if let limit { items.append(URLQueryItem(name: "limit", value: String(limit))) }
         if let offset { items.append(URLQueryItem(name: "offset", value: String(offset))) }
         if let sort { items.append(URLQueryItem(name: "sort", value: sort)) }
+        if let select, !select.isEmpty {
+            items.append(URLQueryItem(name: "select", value: select.joined(separator: ",")))
+        }
         if let whereClause {
             for (k, v) in whereClause {
                 items.append(URLQueryItem(name: "where[\(k)]", value: v.queryString))
+            }
+        }
+        if let filter {
+            for (field, operations) in filter {
+                for (operation, value) in operations {
+                    let wireOperation: String
+                    switch operation {
+                    case "isNull": wireOperation = "is_null"
+                    case "startsWith": wireOperation = "starts_with"
+                    default: wireOperation = operation
+                    }
+                    items.append(URLQueryItem(
+                        name: "filter[\(field)][\(wireOperation)]",
+                        value: value.queryString
+                    ))
+                }
             }
         }
 

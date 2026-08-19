@@ -17,6 +17,8 @@ class TableQuery {
   /// Boolean `where` values are encoded as SQLite `0`/`1`.
   Future<ListResult> select({
     Map<String, Object?>? where,
+    Map<String, Map<String, Object?>>? filter,
+    List<String>? select,
     String? sort,
     int? limit,
     int? offset,
@@ -25,6 +27,9 @@ class TableQuery {
     if (limit != null) params['limit'] = limit.toString();
     if (offset != null) params['offset'] = offset.toString();
     if (sort != null) params['sort'] = sort;
+    if (select != null && select.isNotEmpty) {
+      params['select'] = select.join(',');
+    }
     if (where != null) {
       for (final entry in where.entries) {
         final v = entry.value;
@@ -32,6 +37,22 @@ class TableQuery {
           params['where[${entry.key}]'] = v ? '1' : '0';
         } else if (v != null) {
           params['where[${entry.key}]'] = v.toString();
+        }
+      }
+    }
+    if (filter != null) {
+      for (final field in filter.entries) {
+        for (final operation in field.value.entries) {
+          final wireOperation = switch (operation.key) {
+            'isNull' => 'is_null',
+            'startsWith' => 'starts_with',
+            _ => operation.key,
+          };
+          final value = operation.value;
+          if (value == null) continue;
+          params['filter[${field.key}][$wireOperation]'] = value is Iterable
+              ? value.join(',')
+              : value.toString();
         }
       }
     }

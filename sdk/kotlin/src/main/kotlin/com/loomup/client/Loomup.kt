@@ -26,6 +26,8 @@ data class LoomupClientOptions(
     val url: String,
     val token: String? = null,
     val refreshToken: String? = null,
+    val publishableKey: String? = null,
+    val serviceKey: String? = null,
     val http: HttpTransport = OkHttpHttpTransport(),
     val webSocketFactory: WebSocketFactory? = null,
 )
@@ -35,6 +37,8 @@ fun createClient(
     url: String,
     token: String? = null,
     refreshToken: String? = null,
+    publishableKey: String? = null,
+    serviceKey: String? = null,
     http: HttpTransport = OkHttpHttpTransport(),
     webSocketFactory: WebSocketFactory? = null,
 ): LoomupClient {
@@ -43,6 +47,8 @@ fun createClient(
             url = url,
             token = token,
             refreshToken = refreshToken,
+            publishableKey = publishableKey,
+            serviceKey = serviceKey,
             http = http,
             webSocketFactory = webSocketFactory,
         ),

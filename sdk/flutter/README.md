@@ -67,6 +67,18 @@ final sub = client.from('todos').changes().listen((event) {
 await sub.cancel(); // unsubscribes
 ```
 
+## Offline SQLite
+
+```dart
+final storage = await SQLiteSyncStorage.open(yourDatabaseAdapter);
+final offline = await client.offline(resources: ['todos'], storage: storage);
+
+await offline.create('todos', {'title': 'Queued locally'});
+offline.statuses.listen((status) => print('${status.phase} ${status.pending}'));
+```
+
+Implement the small `SQLiteSyncDatabase` interface around `sqflite`, Drift, or the SQLite package already used by the app. Loomup then owns its internal state table, mutation queue, cursors, reset recovery, and realtime invalidation—no application migration or sync SQL. Use `MemorySyncStorage` in tests and call `await offline.close()` with the owning lifecycle.
+
 ## Tokens
 
 - `setToken(...)` re-authenticates an open WebSocket and re-sends all active subscriptions.
@@ -108,5 +120,6 @@ cd sdk/flutter && dart pub get && dart test
 | Auth | `signUp` / `register`, `signIn` / `login`, `signOut` / `logout`, `me`, `refresh` |
 | CRUD | `from(table).select/get/insert/update/delete` |
 | Realtime | `subscribe`, `subscribeReady`, `changes`, `onControl`, `closeRealtime` |
+| Offline | `offline`, `find/get/create/update/remove`, `statuses`, `sync`, `setOnline` |
 
 Row payloads use `Map<String, dynamic>` (dynamic tables; Dart codegen is a future enhancement).

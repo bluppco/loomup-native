@@ -18,6 +18,8 @@ class TableQuery internal constructor(
 
     suspend fun select(
         where: Map<String, WhereValue>? = null,
+        filter: Map<String, Map<String, WhereValue>>? = null,
+        select: List<String>? = null,
         sort: String? = null,
         limit: Int? = null,
         offset: Int? = null,
@@ -26,9 +28,22 @@ class TableQuery internal constructor(
         if (limit != null) items.add("limit" to limit.toString())
         if (offset != null) items.add("offset" to offset.toString())
         if (sort != null) items.add("sort" to sort)
+        if (!select.isNullOrEmpty()) items.add("select" to select.joinToString(","))
         if (where != null) {
             for ((k, v) in where) {
                 items.add("where[$k]" to v.queryString)
+            }
+        }
+        if (filter != null) {
+            for ((field, operations) in filter) {
+                for ((operation, value) in operations) {
+                    val wireOperation = when (operation) {
+                        "isNull" -> "is_null"
+                        "startsWith" -> "starts_with"
+                        else -> operation
+                    }
+                    items.add("filter[$field][$wireOperation]" to value.queryString)
+                }
             }
         }
 

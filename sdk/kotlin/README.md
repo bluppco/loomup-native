@@ -56,6 +56,18 @@ unsub()
 client.closeRealtime()
 ```
 
+## Offline SQLite
+
+```kotlin
+val storage = SQLiteSyncStorage(File("loomup-local.sqlite"))
+val offline = client.offline(resources = listOf("todos"), storage = storage)
+
+offline.create("todos", mapOf("title" to JsonValue.String("Queued locally")))
+offline.status.collect { println("${it.phase} ${it.pending}") }
+```
+
+The SDK owns the mutation queue, cursors, reset recovery, and realtime invalidation; application code does not write sync SQL. The JVM adapter needs a SQLite JDBC driver such as `runtimeOnly("org.xerial:sqlite-jdbc:3.47.1.0")`. Android apps can back the three-method `SyncStorage` interface with Room or platform SQLite. Use `MemorySyncStorage` in tests and call `offline.close()` with the owning lifecycle.
+
 ## Tokens
 
 - `setToken(...)` re-authenticates an open WebSocket and re-sends all active subscriptions.
@@ -87,5 +99,6 @@ cd sdk/kotlin && ./gradlew test
 | Auth | `signUp` / `register`, `signIn` / `login`, `signOut` / `logout`, `me`, `refresh` |
 | CRUD | `from(table).select/get/insert/update/delete` |
 | Realtime | `subscribe`, `subscribeReady`, `onControl`, `closeRealtime` |
+| Offline | `offline`, `find/get/create/update/remove`, `status`, `sync`, `setOnline` |
 
 Row payloads use `JsonValue` (dynamic tables; Kotlin codegen is a future enhancement).

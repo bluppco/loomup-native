@@ -5,6 +5,8 @@ public struct LoomupClientOptions: Sendable {
     public var url: URL
     public var token: String?
     public var refreshToken: String?
+    public var publishableKey: String?
+    public var serviceKey: String?
     public var http: HTTPTransport
     public var webSocketFactory: WebSocketFactory?
 
@@ -12,12 +14,16 @@ public struct LoomupClientOptions: Sendable {
         url: URL,
         token: String? = nil,
         refreshToken: String? = nil,
+        publishableKey: String? = nil,
+        serviceKey: String? = nil,
         http: HTTPTransport = URLSessionHTTPTransport(),
         webSocketFactory: WebSocketFactory? = nil
     ) {
         self.url = url
         self.token = token
         self.refreshToken = refreshToken
+        self.publishableKey = publishableKey
+        self.serviceKey = serviceKey
         self.http = http
         self.webSocketFactory = webSocketFactory
     }
@@ -28,6 +34,8 @@ public func createClient(
     url: URL,
     token: String? = nil,
     refreshToken: String? = nil,
+    publishableKey: String? = nil,
+    serviceKey: String? = nil,
     http: HTTPTransport = URLSessionHTTPTransport(),
     webSocketFactory: WebSocketFactory? = nil
 ) -> LoomupClient {
@@ -36,6 +44,8 @@ public func createClient(
             url: url,
             token: token,
             refreshToken: refreshToken,
+            publishableKey: publishableKey,
+            serviceKey: serviceKey,
             http: http,
             webSocketFactory: webSocketFactory
         )
@@ -52,6 +62,8 @@ public final class LoomupClient: @unchecked Sendable {
 
     private var token: String?
     private var refreshToken: String?
+    private let publishableKey: String?
+    private let serviceKey: String?
 
     // Realtime state
     private var ws: WebSocketConnecting?
@@ -79,6 +91,8 @@ public final class LoomupClient: @unchecked Sendable {
         self.url = base
         self.token = options.token
         self.refreshToken = options.refreshToken
+        self.publishableKey = options.publishableKey
+        self.serviceKey = options.serviceKey
         self.http = options.http
         self.webSocketFactory = options.webSocketFactory ?? {
             URLSessionWebSocketConnection()
@@ -89,6 +103,8 @@ public final class LoomupClient: @unchecked Sendable {
         url: URL,
         token: String? = nil,
         refreshToken: String? = nil,
+        publishableKey: String? = nil,
+        serviceKey: String? = nil,
         http: HTTPTransport = URLSessionHTTPTransport(),
         webSocketFactory: WebSocketFactory? = nil
     ) {
@@ -97,6 +113,8 @@ public final class LoomupClient: @unchecked Sendable {
                 url: url,
                 token: token,
                 refreshToken: refreshToken,
+                publishableKey: publishableKey,
+                serviceKey: serviceKey,
                 http: http,
                 webSocketFactory: webSocketFactory
             )
@@ -349,6 +367,11 @@ public final class LoomupClient: @unchecked Sendable {
         lock.unlock()
         if let access {
             req.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization")
+        } else if let serviceKey {
+            req.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
+        }
+        if let publishableKey {
+            req.setValue(publishableKey, forHTTPHeaderField: "X-Loomup-Key")
         }
         if let body {
             if let contentType {
