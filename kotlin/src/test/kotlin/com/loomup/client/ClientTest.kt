@@ -90,6 +90,31 @@ class ClientTest {
     }
 
     @Test
+    fun oauthAuthorizeAndExchangeApplySession() = runBlocking {
+        val http = MockHttp()
+        http.handler = { _, url, _, _ ->
+            when {
+                url.endsWith("/auth/oauth/authorize") -> jsonBytes(
+                    """{"data":{"authorization_url":"https://accounts.test/authorize","code_verifier":"kotlin-verifier","expires_in":600}}""",
+                ) to 200
+                url.endsWith("/auth/oauth/exchange") -> jsonBytes(
+                    """{"data":{"access_token":"kotlin-access","refresh_token":"kotlin-refresh","token_type":"Bearer","expires_in":900,"user":{"id":"u1","email":"a@b.com","role":"user","disabled":false,"created_at":1}}}""",
+                ) to 200
+                else -> jsonBytes("nope") to 404
+            }
+        }
+        val client = createClient(url = "https://api.test", http = http)
+        val authorization = client.auth.authorizeOAuth(
+            OAuthProvider.Google,
+            "com.example.app:/auth/callback",
+        )
+        assertEquals("kotlin-verifier", authorization.codeVerifier)
+        val tokens = client.auth.exchangeOAuthCode("handoff", authorization.codeVerifier)
+        assertEquals("kotlin-access", tokens.accessToken)
+        assertEquals("kotlin-access", client.accessToken)
+    }
+
+    @Test
     fun crudInsertUpdateDeletePaths() = runBlocking {
         val http = MockHttp()
         http.handler = { method, url, _, body ->

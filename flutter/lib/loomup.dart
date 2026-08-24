@@ -15,6 +15,9 @@ export 'src/http_transport.dart'
 export 'src/models.dart'
     show
         AuthTokens,
+        OAuthAuthorization,
+        OAuthProvider,
+        OAuthProviderInfo,
         ChangeEvent,
         ControlEvent,
         ControlHandler,

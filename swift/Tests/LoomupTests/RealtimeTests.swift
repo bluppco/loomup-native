@@ -24,8 +24,8 @@ final class RealtimeTests: XCTestCase {
             url: URL(string: "http://localhost:3000")!,
             webSocketFactory: box.factory()
         )
-        var controls: [ControlEvent] = []
-        let off = c.onControl { controls.append($0) }
+        let controls = LockedValue<[ControlEvent]>([])
+        let off = c.onControl { event in controls.withValue { $0.append(event) } }
         let unsub = c.from("todos").subscribe { _ in }
         try await Task.sleep(nanoseconds: 50_000_000)
         box.socket?.simulateMessage(
@@ -35,8 +35,9 @@ final class RealtimeTests: XCTestCase {
             #"{"type":"error","code":"SUBSCRIBE_ERROR","table":"todos","message":"subscribe forbidden"}"#
         )
         try await Task.sleep(nanoseconds: 20_000_000)
-        XCTAssertTrue(controls.contains { $0.type == "error" && $0.code == "AUTH_ERROR" })
-        XCTAssertTrue(controls.contains { $0.type == "error" && $0.code == "SUBSCRIBE_ERROR" })
+        let controlSnapshot = controls.snapshot()
+        XCTAssertTrue(controlSnapshot.contains { $0.type == "error" && $0.code == "AUTH_ERROR" })
+        XCTAssertTrue(controlSnapshot.contains { $0.type == "error" && $0.code == "SUBSCRIBE_ERROR" })
         off()
         unsub()
         c.closeRealtime()
@@ -173,10 +174,12 @@ final class RealtimeTests: XCTestCase {
             http: http,
             webSocketFactory: box.factory()
         )
-        var events: [ChangeEvent] = []
-        let unsub = c.from("todos").subscribe(rowId: "7") { events.append($0) }
+        let events = LockedValue<[ChangeEvent]>([])
+        let unsub = c.from("todos").subscribe(rowId: "7") { event in
+            events.withValue { $0.append(event) }
+        }
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(events.filter { $0.op == "RESYNC" }.count, 0)
+        XCTAssertEqual(events.snapshot().filter { $0.op == "RESYNC" }.count, 0)
 
         // Drop + reconnect
         box.socket?.simulateClose()
@@ -184,8 +187,9 @@ final class RealtimeTests: XCTestCase {
         try await Task.sleep(nanoseconds: 1_200_000_000)
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        let resyncs = events.filter { $0.op == "RESYNC" }
-        XCTAssertGreaterThanOrEqual(resyncs.count, 1, "events=\(events.map { $0.op })")
+        let eventSnapshot = events.snapshot()
+        let resyncs = eventSnapshot.filter { $0.op == "RESYNC" }
+        XCTAssertGreaterThanOrEqual(resyncs.count, 1, "events=\(eventSnapshot.map { $0.op })")
         if let first = resyncs.first {
             XCTAssertEqual(first.id, "7")
             XCTAssertEqual(first.data?["title"]?.stringValue, "after-outage")
@@ -300,18 +304,22 @@ final class RealtimeTests: XCTestCase {
             url: URL(string: "http://example.test")!,
             webSocketFactory: box.factory()
         )
-        var tableEvents: [ChangeEvent] = []
-        var rowEvents: [ChangeEvent] = []
-        let u1 = c.from("todos").subscribe { tableEvents.append($0) }
-        let u2 = c.from("todos").subscribe(rowId: "9") { rowEvents.append($0) }
+        let tableEvents = LockedValue<[ChangeEvent]>([])
+        let rowEvents = LockedValue<[ChangeEvent]>([])
+        let u1 = c.from("todos").subscribe { event in
+            tableEvents.withValue { $0.append(event) }
+        }
+        let u2 = c.from("todos").subscribe(rowId: "9") { event in
+            rowEvents.withValue { $0.append(event) }
+        }
         try await Task.sleep(nanoseconds: 40_000_000)
         box.socket?.simulateMessage(
             #"{"type":"change","table":"todos","op":"INSERT","id":"9","data":{"id":9,"title":"x"},"ts":100}"#
         )
         try await Task.sleep(nanoseconds: 20_000_000)
-        XCTAssertEqual(tableEvents.count, 1)
-        XCTAssertEqual(rowEvents.count, 1)
-        XCTAssertEqual(tableEvents.first?.op, "INSERT")
+        XCTAssertEqual(tableEvents.snapshot().count, 1)
+        XCTAssertEqual(rowEvents.snapshot().count, 1)
+        XCTAssertEqual(tableEvents.snapshot().first?.op, "INSERT")
         u1()
         u2()
         c.closeRealtime()

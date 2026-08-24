@@ -5,8 +5,11 @@ public struct LoomupClientOptions: Sendable {
     public var url: URL
     public var token: String?
     public var refreshToken: String?
+    /// Legacy non-authorizing project identifier. This is not a secret and is
+    /// never a substitute for user authentication or app integrity.
     public var publishableKey: String?
-    public var serviceKey: String?
+    public var appIntegrityProvider: (any AppIntegrityProvider)?
+    public var refreshTokenStore: (any RefreshTokenStore)?
     public var http: HTTPTransport
     public var webSocketFactory: WebSocketFactory?
 
@@ -15,7 +18,8 @@ public struct LoomupClientOptions: Sendable {
         token: String? = nil,
         refreshToken: String? = nil,
         publishableKey: String? = nil,
-        serviceKey: String? = nil,
+        appIntegrityProvider: (any AppIntegrityProvider)? = nil,
+        refreshTokenStore: (any RefreshTokenStore)? = nil,
         http: HTTPTransport = URLSessionHTTPTransport(),
         webSocketFactory: WebSocketFactory? = nil
     ) {
@@ -23,7 +27,8 @@ public struct LoomupClientOptions: Sendable {
         self.token = token
         self.refreshToken = refreshToken
         self.publishableKey = publishableKey
-        self.serviceKey = serviceKey
+        self.appIntegrityProvider = appIntegrityProvider
+        self.refreshTokenStore = refreshTokenStore
         self.http = http
         self.webSocketFactory = webSocketFactory
     }
@@ -35,7 +40,8 @@ public func createClient(
     token: String? = nil,
     refreshToken: String? = nil,
     publishableKey: String? = nil,
-    serviceKey: String? = nil,
+    appIntegrityProvider: (any AppIntegrityProvider)? = nil,
+    refreshTokenStore: (any RefreshTokenStore)? = nil,
     http: HTTPTransport = URLSessionHTTPTransport(),
     webSocketFactory: WebSocketFactory? = nil
 ) -> LoomupClient {
@@ -45,7 +51,8 @@ public func createClient(
             token: token,
             refreshToken: refreshToken,
             publishableKey: publishableKey,
-            serviceKey: serviceKey,
+            appIntegrityProvider: appIntegrityProvider,
+            refreshTokenStore: refreshTokenStore,
             http: http,
             webSocketFactory: webSocketFactory
         )
@@ -63,7 +70,8 @@ public final class LoomupClient: @unchecked Sendable {
     private var token: String?
     private var refreshToken: String?
     private let publishableKey: String?
-    private let serviceKey: String?
+    private let appIntegrityProvider: (any AppIntegrityProvider)?
+    private let refreshTokenStore: (any RefreshTokenStore)?
 
     // Realtime state
     private var ws: WebSocketConnecting?
@@ -90,9 +98,10 @@ public final class LoomupClient: @unchecked Sendable {
         }
         self.url = base
         self.token = options.token
-        self.refreshToken = options.refreshToken
+        self.refreshToken = options.refreshToken ?? (try? options.refreshTokenStore?.loadRefreshToken())
         self.publishableKey = options.publishableKey
-        self.serviceKey = options.serviceKey
+        self.appIntegrityProvider = options.appIntegrityProvider
+        self.refreshTokenStore = options.refreshTokenStore
         self.http = options.http
         self.webSocketFactory = options.webSocketFactory ?? {
             URLSessionWebSocketConnection()
@@ -104,7 +113,8 @@ public final class LoomupClient: @unchecked Sendable {
         token: String? = nil,
         refreshToken: String? = nil,
         publishableKey: String? = nil,
-        serviceKey: String? = nil,
+        appIntegrityProvider: (any AppIntegrityProvider)? = nil,
+        refreshTokenStore: (any RefreshTokenStore)? = nil,
         http: HTTPTransport = URLSessionHTTPTransport(),
         webSocketFactory: WebSocketFactory? = nil
     ) {
@@ -114,7 +124,8 @@ public final class LoomupClient: @unchecked Sendable {
                 token: token,
                 refreshToken: refreshToken,
                 publishableKey: publishableKey,
-                serviceKey: serviceKey,
+                appIntegrityProvider: appIntegrityProvider,
+                refreshTokenStore: refreshTokenStore,
                 http: http,
                 webSocketFactory: webSocketFactory
             )
@@ -140,6 +151,7 @@ public final class LoomupClient: @unchecked Sendable {
         lock.lock()
         self.refreshToken = token
         lock.unlock()
+        try? refreshTokenStore?.saveRefreshToken(token)
     }
 
     public func setTablePrimaryKey(table: String, pk: String) {
@@ -276,6 +288,24 @@ public final class LoomupClient: @unchecked Sendable {
             try await signIn(email: email, password: password)
         }
 
+        public func oauthProviders() async throws -> [OAuthProviderInfo] {
+            try await client!.oauthProviders()
+        }
+
+        public func authorizeOAuth(
+            provider: OAuthProvider,
+            redirectTo: String
+        ) async throws -> OAuthAuthorization {
+            try await client!.authorizeOAuth(provider: provider, redirectTo: redirectTo)
+        }
+
+        public func exchangeOAuthCode(
+            code: String,
+            codeVerifier: String
+        ) async throws -> AuthTokens {
+            try await client!.exchangeOAuthCode(code: code, codeVerifier: codeVerifier)
+        }
+
         public func signOut() async {
             await client!.signOut()
         }
@@ -353,7 +383,28 @@ public final class LoomupClient: @unchecked Sendable {
         extraHeaders: [String: String] = [:],
         skipRetry: Bool = false
     ) async throws -> Data {
-        var req = URLRequest(url: joinURL(base: url, path: path))
+        try await request(
+            method: method,
+            path: path,
+            body: body,
+            contentType: contentType,
+            extraHeaders: extraHeaders,
+            skipRetry: skipRetry,
+            skipIntegrityRetry: false
+        )
+    }
+
+    private func request(
+        method: String,
+        path: String,
+        body: Data?,
+        contentType: String?,
+        extraHeaders: [String: String],
+        skipRetry: Bool,
+        skipIntegrityRetry: Bool
+    ) async throws -> Data {
+        let requestURL = joinURL(base: url, path: path)
+        var req = URLRequest(url: requestURL)
         req.httpMethod = method
         if extraHeaders["Accept"] == nil {
             req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -361,14 +412,9 @@ public final class LoomupClient: @unchecked Sendable {
         for (k, v) in extraHeaders {
             req.setValue(v, forHTTPHeaderField: k)
         }
-        lock.lock()
-        let access = token
-        let refresh = refreshToken
-        lock.unlock()
+        let (access, refresh) = lock.withLock { (token, refreshToken) }
         if let access {
             req.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization")
-        } else if let serviceKey {
-            req.setValue("Bearer \(serviceKey)", forHTTPHeaderField: "Authorization")
         }
         if let publishableKey {
             req.setValue(publishableKey, forHTTPHeaderField: "X-Loomup-Key")
@@ -379,9 +425,37 @@ public final class LoomupClient: @unchecked Sendable {
             }
             req.httpBody = body
         }
+        if isIntegrityProtected(method: method, path: path), let appIntegrityProvider {
+            let grant = try await appIntegrityProvider.prepareGrant(
+                for: AppIntegrityRequest(
+                    method: method,
+                    pathAndQuery: requestTarget(forPath: path),
+                    body: body ?? Data(),
+                    authorizationToken: access
+                )
+            )
+            req.setValue(grant, forHTTPHeaderField: "X-Loomup-App-Grant")
+        }
 
         let (data, response) = try await http.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+
+        if status == 403,
+           !skipIntegrityRetry,
+           appIntegrityProvider != nil,
+           let error = try? JSONDecoder().decode(ErrorBody.self, from: data),
+           error.error?.code == "app_integrity_required"
+        {
+            return try await request(
+                method: method,
+                path: path,
+                body: body,
+                contentType: contentType,
+                extraHeaders: extraHeaders,
+                skipRetry: skipRetry,
+                skipIntegrityRetry: true
+            )
+        }
 
         if status == 401,
            !skipRetry,
@@ -398,7 +472,8 @@ public final class LoomupClient: @unchecked Sendable {
                     body: body,
                     contentType: contentType,
                     extraHeaders: extraHeaders,
-                    skipRetry: true
+                    skipRetry: true,
+                    skipIntegrityRetry: skipIntegrityRetry
                 )
             } catch {
                 // fall through with original error
@@ -409,6 +484,14 @@ public final class LoomupClient: @unchecked Sendable {
             throw parseError(data: data, status: status)
         }
         return data
+    }
+
+    private func isIntegrityProtected(method: String, path: String) -> Bool {
+        guard ["POST", "PUT", "PATCH", "DELETE"].contains(method.uppercased()) else {
+            return false
+        }
+        return path != "/app-integrity/v1/challenge"
+            && path != "/app-integrity/v1/verify"
     }
 
     public func requestJSON<T: Decodable>(
@@ -469,6 +552,57 @@ public final class LoomupClient: @unchecked Sendable {
             method: "POST",
             path: "/auth/login",
             body: body,
+            skipRetry: true
+        )
+        applyTokens(env.data)
+        return env.data
+    }
+
+    public func oauthProviders() async throws -> [OAuthProviderInfo] {
+        let env: DataEnvelope<[OAuthProviderInfo]> = try await requestJSON(
+            method: "GET",
+            path: "/auth/oauth/providers"
+        )
+        return env.data
+    }
+
+    public func authorizeOAuth(
+        provider: OAuthProvider,
+        redirectTo: String
+    ) async throws -> OAuthAuthorization {
+        struct Body: Encodable {
+            let provider: OAuthProvider
+            let redirectTo: String
+            enum CodingKeys: String, CodingKey {
+                case provider
+                case redirectTo = "redirect_to"
+            }
+        }
+        let env: DataEnvelope<OAuthAuthorization> = try await requestJSON(
+            method: "POST",
+            path: "/auth/oauth/authorize",
+            body: try encodeJSON(Body(provider: provider, redirectTo: redirectTo)),
+            skipRetry: true
+        )
+        return env.data
+    }
+
+    public func exchangeOAuthCode(
+        code: String,
+        codeVerifier: String
+    ) async throws -> AuthTokens {
+        struct Body: Encodable {
+            let code: String
+            let codeVerifier: String
+            enum CodingKeys: String, CodingKey {
+                case code
+                case codeVerifier = "code_verifier"
+            }
+        }
+        let env: DataEnvelope<AuthTokens> = try await requestJSON(
+            method: "POST",
+            path: "/auth/oauth/exchange",
+            body: try encodeJSON(Body(code: code, codeVerifier: codeVerifier)),
             skipRetry: true
         )
         applyTokens(env.data)
@@ -541,14 +675,19 @@ public final class LoomupClient: @unchecked Sendable {
     }
 
     public func refresh() async throws -> AuthTokens {
+        let task = try refreshTask()
+        defer { clearRefreshTask() }
+        return try await task.value
+    }
+
+    private func refreshTask() throws -> Task<AuthTokens, Error> {
         lock.lock()
+        defer { lock.unlock() }
         guard let rt = refreshToken else {
-            lock.unlock()
             throw LoomupError("no refresh token", code: "no_refresh")
         }
         if let existing = refreshingTask {
-            lock.unlock()
-            return try await existing.value
+            return existing
         }
         let task = Task<AuthTokens, Error> { [weak self] in
             guard let self else { throw LoomupError("client deallocated", code: "gone") }
@@ -564,19 +703,17 @@ public final class LoomupClient: @unchecked Sendable {
             return env.data
         }
         refreshingTask = task
-        lock.unlock()
-        defer {
-            lock.lock()
+        return task
+    }
+
+    private func clearRefreshTask() {
+        lock.withLock {
             refreshingTask = nil
-            lock.unlock()
         }
-        return try await task.value
     }
 
     public func signOut() async {
-        lock.lock()
-        let rt = refreshToken
-        lock.unlock()
+        let rt = lock.withLock { refreshToken }
         if let rt {
             struct Body: Encodable { let refresh_token: String }
             if let body = try? encodeJSON(Body(refresh_token: rt)) {
@@ -588,10 +725,11 @@ public final class LoomupClient: @unchecked Sendable {
                 )
             }
         }
-        lock.lock()
-        token = nil
-        refreshToken = nil
-        lock.unlock()
+        lock.withLock {
+            token = nil
+            refreshToken = nil
+        }
+        try? refreshTokenStore?.saveRefreshToken(nil)
         closeRealtime()
     }
 
@@ -600,6 +738,7 @@ public final class LoomupClient: @unchecked Sendable {
         token = data.accessToken
         refreshToken = data.refreshToken
         lock.unlock()
+        try? refreshTokenStore?.saveRefreshToken(data.refreshToken)
         reauthAndResubscribe()
     }
 
@@ -962,15 +1101,12 @@ public final class LoomupClient: @unchecked Sendable {
     }
 
     private func resyncSubscriptions() async {
-        lock.lock()
-        let keys = Array(subs.keys)
-        lock.unlock()
+        let keys = lock.withLock { Array(subs.keys) }
 
         for key in keys {
-            lock.lock()
-            let handlers = Array((subs[key] ?? [:]).values)
-            let pkMap = tablePrimaryKeys
-            lock.unlock()
+            let (handlers, pkMap) = lock.withLock {
+                (Array((subs[key] ?? [:]).values), tablePrimaryKeys)
+            }
             guard !handlers.isEmpty else { continue }
             let parsed = parseSubKey(key)
             do {

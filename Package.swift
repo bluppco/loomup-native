@@ -14,11 +14,16 @@ let package = Package(
         .library(name: "LoomupAppIntegrity", targets: ["LoomupAppIntegrity"]),
     ],
     targets: [
-        .target(name: "Loomup"),
-        .target(name: "LoomupAppIntegrity", dependencies: ["Loomup"]),
+        .target(name: "Loomup", path: "swift/Sources/Loomup"),
+        .target(
+            name: "LoomupAppIntegrity",
+            dependencies: ["Loomup"],
+            path: "swift/Sources/LoomupAppIntegrity"
+        ),
         .testTarget(
             name: "LoomupTests",
-            dependencies: ["Loomup", "LoomupAppIntegrity"]
+            dependencies: ["Loomup", "LoomupAppIntegrity"],
+            path: "swift/Tests/LoomupTests"
         ),
     ]
 )

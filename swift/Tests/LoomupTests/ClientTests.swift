@@ -28,9 +28,9 @@ final class ClientTests: XCTestCase {
 
     func testSelectEncodesBooleanWhereAsZeroOne() async throws {
         let http = MockHTTP()
-        var urls: [String] = []
+        let urls = LockedValue<[String]>([])
         http.handler = { _, url, _, _ in
-            urls.append(url)
+            urls.withValue { $0.append(url) }
             let body = jsonData([
                 "data": [],
                 "meta": ["limit": 10, "offset": 0, "total": 0],
@@ -43,14 +43,16 @@ final class ClientTests: XCTestCase {
         )
         _ = try await c.from("todos").select(where: ["completed": true], limit: 5)
         XCTAssertTrue(
-            urls[0].contains("where%5Bcompleted%5D=1") || urls[0].contains("where[completed]=1"),
-            urls[0]
+            urls.snapshot()[0].contains("where%5Bcompleted%5D=1")
+                || urls.snapshot()[0].contains("where[completed]=1"),
+            urls.snapshot()[0]
         )
-        urls.removeAll()
+        urls.withValue { $0.removeAll() }
         _ = try await c.from("todos").select(where: ["completed": false])
         XCTAssertTrue(
-            urls[0].contains("where%5Bcompleted%5D=0") || urls[0].contains("where[completed]=0"),
-            urls[0]
+            urls.snapshot()[0].contains("where%5Bcompleted%5D=0")
+                || urls.snapshot()[0].contains("where[completed]=0"),
+            urls.snapshot()[0]
         )
     }
 
@@ -83,6 +85,40 @@ final class ClientTests: XCTestCase {
         let tokens = try await c.signIn(email: "a@b.com", password: "secret12")
         XCTAssertEqual(tokens.accessToken, "a")
         XCTAssertEqual(c.accessToken, "a")
+    }
+
+    func testOAuthAuthorizeAndExchangeApplySession() async throws {
+        let http = MockHTTP()
+        http.handler = { _, url, _, body in
+            if url.hasSuffix("/auth/oauth/authorize") {
+                let json = try! JSONSerialization.jsonObject(with: body!) as! [String: String]
+                XCTAssertEqual(json["provider"], "google")
+                XCTAssertEqual(json["redirect_to"], "com.example.app:/auth/callback")
+                return (jsonData(["data": ["authorization_url": "https://accounts.test/authorize", "code_verifier": "swift-verifier", "expires_in": 600]]), 200)
+            }
+            if url.hasSuffix("/auth/oauth/exchange") {
+                return (jsonData(["data": [
+                    "access_token": "swift-access",
+                    "refresh_token": "swift-refresh",
+                    "token_type": "Bearer",
+                    "expires_in": 900,
+                    "user": ["id": "u1", "email": "a@b.com", "role": "user", "disabled": false, "created_at": 1],
+                ]]), 200)
+            }
+            return (Data("nope".utf8), 404)
+        }
+        let client = createClient(url: URL(string: "https://api.test")!, http: http)
+        let authorization = try await client.auth.authorizeOAuth(
+            provider: .google,
+            redirectTo: "com.example.app:/auth/callback"
+        )
+        XCTAssertEqual(authorization.codeVerifier, "swift-verifier")
+        let tokens = try await client.auth.exchangeOAuthCode(
+            code: "handoff",
+            codeVerifier: authorization.codeVerifier
+        )
+        XCTAssertEqual(tokens.accessToken, "swift-access")
+        XCTAssertEqual(client.accessToken, "swift-access")
     }
 
     func testCRUDInsertUpdateDeletePaths() async throws {

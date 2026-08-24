@@ -7,6 +7,23 @@ public func joinURL(base: URL, path: String) -> URL {
     return URL(string: trimmedBase + p)!
 }
 
+/// Normalize the logical backend request target. The SDK base URL can contain
+/// a reverse-proxy prefix which is stripped before Loomup sees the request, so
+/// that prefix must not become part of the server-side grant binding.
+func requestTarget(forPath path: String) -> String {
+    let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+    guard let url = URL(string: "https://loomup.invalid\(normalizedPath)"),
+          let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    else {
+        return normalizedPath
+    }
+    var target = components.percentEncodedPath.isEmpty ? "/" : components.percentEncodedPath
+    if let query = components.percentEncodedQuery {
+        target += "?\(query)"
+    }
+    return target
+}
+
 /**
  Subscription keys are `table` or `table#rowId`. Split only on the first `#`
  so row IDs that themselves contain `#` round-trip correctly.

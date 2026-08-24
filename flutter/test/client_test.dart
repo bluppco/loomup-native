@@ -90,6 +90,86 @@ void main() {
     expect(c.accessToken, 'a');
   });
 
+  test('OAuth helper keeps verifier in flow and applies session', () async {
+    final http = MockHttp();
+    http.handler = (method, url, auth, body) async {
+      if (url.endsWith('/auth/oauth/authorize')) {
+        return (
+          body: jsonBytes({
+            'data': {
+              'authorization_url': 'https://accounts.test/authorize',
+              'code_verifier': 'dart-verifier',
+              'expires_in': 600,
+            },
+          }),
+          status: 200,
+        );
+      }
+      if (url.endsWith('/auth/oauth/exchange')) {
+        return (
+          body: jsonBytes({
+            'data': {
+              'access_token': 'dart-access',
+              'refresh_token': 'dart-refresh',
+              'token_type': 'Bearer',
+              'expires_in': 900,
+              'user': {
+                'id': 'u1',
+                'email': 'a@b.com',
+                'role': 'user',
+                'disabled': false,
+                'created_at': 1,
+              },
+            },
+          }),
+          status: 200,
+        );
+      }
+      return (body: utf8Encode('nope'), status: 404);
+    };
+    final client = createClient(url: 'https://api.test', http: http);
+    final tokens = await client.auth.signInWithOAuth(
+      provider: OAuthProvider.google,
+      redirectTo: 'com.example.app:/auth/callback',
+      openAuthSession: (authorizationUrl, redirectTo) async {
+        expect(authorizationUrl, 'https://accounts.test/authorize');
+        expect(redirectTo, 'com.example.app:/auth/callback');
+        return 'com.example.app:/auth/callback?code=handoff';
+      },
+    );
+    expect(tokens.accessToken, 'dart-access');
+    expect(client.accessToken, 'dart-access');
+  });
+
+  test('OAuth helper rejects a callback for another redirect target', () async {
+    final http = MockHttp();
+    http.handler = (method, url, auth, body) async => (
+          body: jsonBytes({
+            'data': {
+              'authorization_url': 'https://accounts.test/authorize',
+              'code_verifier': 'dart-verifier',
+              'expires_in': 600,
+            },
+          }),
+          status: 200,
+        );
+    final client = createClient(url: 'https://api.test', http: http);
+
+    await expectLater(
+      client.auth.signInWithOAuth(
+        provider: OAuthProvider.google,
+        redirectTo: 'com.example.app:/auth/callback',
+        openAuthSession: (_, __) async =>
+            'com.attacker.app:/auth/callback?code=stolen',
+      ),
+      throwsA(isA<LoomupException>().having(
+        (error) => error.code,
+        'code',
+        'oauth_callback_mismatch',
+      )),
+    );
+  });
+
   test('CRUD insert/update/delete/get', () async {
     final http = MockHttp();
     http.handler = (method, url, auth, body) async {

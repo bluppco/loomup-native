@@ -1,6 +1,20 @@
 import Foundation
 @testable import Loomup
 
+final class LockedValue<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    init(_ value: Value) { self.value = value }
+
+    @discardableResult
+    func withValue<Result>(_ operation: (inout Value) -> Result) -> Result {
+        lock.withLock { operation(&value) }
+    }
+
+    func snapshot() -> Value { lock.withLock { value } }
+}
+
 // MARK: - HTTP mock
 
 final class MockHTTP: HTTPTransport, @unchecked Sendable {
@@ -8,6 +22,7 @@ final class MockHTTP: HTTPTransport, @unchecked Sendable {
         let method: String
         let url: String
         let auth: String?
+        let appGrant: String?
         let body: Data?
     }
 
@@ -20,10 +35,11 @@ final class MockHTTP: HTTPTransport, @unchecked Sendable {
         let method = request.httpMethod ?? "GET"
         let url = request.url?.absoluteString ?? ""
         let auth = request.value(forHTTPHeaderField: "Authorization")
+        let appGrant = request.value(forHTTPHeaderField: "X-Loomup-App-Grant")
         let body = request.httpBody
-        lock.lock()
-        calls.append(Call(method: method, url: url, auth: auth, body: body))
-        lock.unlock()
+        lock.withLock {
+            calls.append(Call(method: method, url: url, auth: auth, appGrant: appGrant, body: body))
+        }
         guard let handler else {
             throw LoomupError("no mock handler", code: "test")
         }

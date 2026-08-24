@@ -16,6 +16,7 @@ class MockHttp : HttpTransport {
         val method: String,
         val url: String,
         val auth: String?,
+        val appGrant: String?,
         val body: ByteArray?,
     )
 
@@ -25,7 +26,7 @@ class MockHttp : HttpTransport {
 
     override suspend fun execute(request: HttpRequest): HttpResponse {
         val auth = request.headers["Authorization"]
-        calls.add(Call(request.method, request.url, auth, request.body))
+        calls.add(Call(request.method, request.url, auth, request.headers["X-Loomup-App-Grant"], request.body))
         val h = handler ?: throw LoomupError("no mock handler", code = "test")
         val (data, status) = h(request.method, request.url, auth, request.body)
         return HttpResponse(status = status, body = data)

@@ -132,6 +132,35 @@ public struct AuthTokens: Codable, Sendable, Equatable {
     }
 }
 
+public enum OAuthProvider: String, Codable, Sendable, CaseIterable {
+    case google
+    case apple
+    case github
+}
+
+public struct OAuthProviderInfo: Codable, Sendable, Equatable {
+    public var provider: OAuthProvider
+    public var configured: Bool
+    public var callbackURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case provider, configured
+        case callbackURL = "callback_url"
+    }
+}
+
+public struct OAuthAuthorization: Codable, Sendable, Equatable {
+    public var authorizationURL: String
+    public var codeVerifier: String
+    public var expiresIn: Int
+
+    enum CodingKeys: String, CodingKey {
+        case authorizationURL = "authorization_url"
+        case codeVerifier = "code_verifier"
+        case expiresIn = "expires_in"
+    }
+}
+
 public struct ListMeta: Codable, Sendable, Equatable {
     public var limit: Int
     public var offset: Int

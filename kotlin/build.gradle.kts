@@ -1,15 +1,12 @@
 plugins {
     kotlin("jvm") version "2.0.21"
     kotlin("plugin.serialization") version "2.0.21"
+    id("com.android.library") version "8.9.1" apply false
     `maven-publish`
 }
 
 group = "com.loomup"
 version = "0.1.0"
-
-repositories {
-    mavenCentral()
-}
 
 java {
     // Compile with the installed JDK; emit JVM 11 bytecode for broader Android/JVM use.

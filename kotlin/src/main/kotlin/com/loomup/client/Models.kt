@@ -31,6 +31,27 @@ data class AuthTokens(
 )
 
 @Serializable
+enum class OAuthProvider(val wireValue: String) {
+    @SerialName("google") Google("google"),
+    @SerialName("apple") Apple("apple"),
+    @SerialName("github") Github("github"),
+}
+
+@Serializable
+data class OAuthProviderInfo(
+    val provider: OAuthProvider,
+    val configured: Boolean,
+    @SerialName("callback_url") val callbackUrl: String,
+)
+
+@Serializable
+data class OAuthAuthorization(
+    @SerialName("authorization_url") val authorizationUrl: String,
+    @SerialName("code_verifier") val codeVerifier: String,
+    @SerialName("expires_in") val expiresIn: Int,
+)
+
+@Serializable
 data class PushDevice(
     val id: String,
     @SerialName("user_id") val userId: String,

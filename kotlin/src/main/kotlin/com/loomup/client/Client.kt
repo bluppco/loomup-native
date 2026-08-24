@@ -42,7 +42,8 @@ class LoomupClient(options: LoomupClientOptions) {
     private var refreshToken: String? = null
 
     private val publishableKey: String?
-    private val serviceKey: String?
+    private val appIntegrityProvider: AppIntegrityProvider?
+    private val refreshTokenStore: RefreshTokenStore?
 
     // Realtime state
     private var ws: WebSocketConnecting? = null
@@ -77,9 +78,10 @@ class LoomupClient(options: LoomupClientOptions) {
     init {
         url = options.url.trimEnd('/')
         token = options.token
-        refreshToken = options.refreshToken
+        refreshToken = options.refreshToken ?: options.refreshTokenStore?.loadRefreshToken()
         publishableKey = options.publishableKey
-        serviceKey = options.serviceKey
+        appIntegrityProvider = options.appIntegrityProvider
+        refreshTokenStore = options.refreshTokenStore
         http = options.http
         webSocketFactory = options.webSocketFactory ?: { OkHttpWebSocketConnection() }
     }
@@ -96,6 +98,7 @@ class LoomupClient(options: LoomupClientOptions) {
 
     fun setRefreshToken(token: String?) {
         this.refreshToken = token
+        refreshTokenStore?.saveRefreshToken(token)
     }
 
     fun setTablePrimaryKey(table: String, pk: String) {
@@ -120,6 +123,16 @@ class LoomupClient(options: LoomupClientOptions) {
 
         suspend fun login(email: String, password: String): AuthTokens =
             signIn(email, password)
+
+        suspend fun oauthProviders(): List<OAuthProviderInfo> = client.oauthProviders()
+
+        suspend fun authorizeOAuth(
+            provider: OAuthProvider,
+            redirectTo: String,
+        ): OAuthAuthorization = client.authorizeOAuth(provider, redirectTo)
+
+        suspend fun exchangeOAuthCode(code: String, codeVerifier: String): AuthTokens =
+            client.exchangeOAuthCode(code, codeVerifier)
 
         suspend fun signOut() = client.signOut()
 
@@ -250,17 +263,34 @@ class LoomupClient(options: LoomupClientOptions) {
         contentType: String? = "application/json",
         extraHeaders: Map<String, String> = emptyMap(),
         skipRetry: Boolean = false,
+    ): ByteArray = request(
+        method = method,
+        path = path,
+        body = body,
+        contentType = contentType,
+        extraHeaders = extraHeaders,
+        skipRetry = skipRetry,
+        skipIntegrityRetry = false,
+    )
+
+    private suspend fun request(
+        method: String,
+        path: String,
+        body: ByteArray?,
+        contentType: String?,
+        extraHeaders: Map<String, String>,
+        skipRetry: Boolean,
+        skipIntegrityRetry: Boolean,
     ): ByteArray {
         val access = token
         val refresh = refreshToken
+        val (requestUrl, requestTarget) = normalizedHttpUrlAndTarget(url, path)
         val headers = linkedMapOf(
             "Accept" to "application/json",
         )
         headers.putAll(extraHeaders)
         if (access != null) {
             headers["Authorization"] = "Bearer $access"
-        } else if (serviceKey != null) {
-            headers["Authorization"] = "Bearer $serviceKey"
         }
         if (publishableKey != null) {
             headers["X-Loomup-Key"] = publishableKey
@@ -268,15 +298,44 @@ class LoomupClient(options: LoomupClientOptions) {
         if (body != null && contentType != null) {
             headers["Content-Type"] = contentType
         }
+        if (isIntegrityProtected(method, path) && appIntegrityProvider != null) {
+            headers["X-Loomup-App-Grant"] = appIntegrityProvider.prepareGrant(
+                AppIntegrityRequest(
+                    method = method.uppercase(),
+                    pathAndQuery = requestTarget,
+                    body = body ?: ByteArray(0),
+                    authorizationToken = access,
+                ),
+            )
+        }
 
         val response = http.execute(
             HttpRequest(
                 method = method,
-                url = joinUrl(url, path),
+                url = requestUrl,
                 headers = headers,
                 body = body,
             ),
         )
+
+        if (response.status == 403 &&
+            !skipIntegrityRetry &&
+            appIntegrityProvider != null &&
+            runCatching {
+                json.decodeFromString<ErrorBody>(String(response.body, StandardCharsets.UTF_8))
+                    .error?.code
+            }.getOrNull() == "app_integrity_required"
+        ) {
+            return request(
+                method,
+                path,
+                body,
+                contentType,
+                extraHeaders,
+                skipRetry,
+                skipIntegrityRetry = true,
+            )
+        }
 
         if (response.status == 401 &&
             !skipRetry &&
@@ -294,6 +353,7 @@ class LoomupClient(options: LoomupClientOptions) {
                     contentType = contentType,
                     extraHeaders = extraHeaders,
                     skipRetry = true,
+                    skipIntegrityRetry = skipIntegrityRetry,
                 )
             } catch (_: Exception) {
                 // fall through with original error
@@ -305,6 +365,11 @@ class LoomupClient(options: LoomupClientOptions) {
         }
         return response.body
     }
+
+    private fun isIntegrityProtected(method: String, path: String): Boolean =
+        method.uppercase() in setOf("POST", "PUT", "PATCH", "DELETE") &&
+            path != "/app-integrity/v1/challenge" &&
+            path != "/app-integrity/v1/verify"
 
     suspend inline fun <reified T> requestJson(
         method: String,
@@ -371,6 +436,46 @@ class LoomupClient(options: LoomupClientOptions) {
         val env: DataEnvelope<AuthTokens> = requestJson(
             "POST",
             "/auth/login",
+            body,
+            skipRetry = true,
+        )
+        applyTokens(env.data)
+        return env.data
+    }
+
+    suspend fun oauthProviders(): List<OAuthProviderInfo> {
+        val env: DataEnvelope<List<OAuthProviderInfo>> = requestJson(
+            "GET",
+            "/auth/oauth/providers",
+        )
+        return env.data
+    }
+
+    suspend fun authorizeOAuth(
+        provider: OAuthProvider,
+        redirectTo: String,
+    ): OAuthAuthorization {
+        val body = buildJsonObject {
+            put("provider", provider.wireValue)
+            put("redirect_to", redirectTo)
+        }.toString().toByteArray(StandardCharsets.UTF_8)
+        val env: DataEnvelope<OAuthAuthorization> = requestJson(
+            "POST",
+            "/auth/oauth/authorize",
+            body,
+            skipRetry = true,
+        )
+        return env.data
+    }
+
+    suspend fun exchangeOAuthCode(code: String, codeVerifier: String): AuthTokens {
+        val body = buildJsonObject {
+            put("code", code)
+            put("code_verifier", codeVerifier)
+        }.toString().toByteArray(StandardCharsets.UTF_8)
+        val env: DataEnvelope<AuthTokens> = requestJson(
+            "POST",
+            "/auth/oauth/exchange",
             body,
             skipRetry = true,
         )
@@ -474,12 +579,14 @@ class LoomupClient(options: LoomupClientOptions) {
         }
         token = null
         refreshToken = null
+        refreshTokenStore?.saveRefreshToken(null)
         closeRealtime()
     }
 
     private fun applyTokens(data: AuthTokens) {
         token = data.accessToken
         refreshToken = data.refreshToken
+        refreshTokenStore?.saveRefreshToken(data.refreshToken)
         reauthAndResubscribe()
     }
 

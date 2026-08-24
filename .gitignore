@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+swift/.build/
+kotlin/.gradle/
+kotlin/build/
+flutter/.dart_tool/
+flutter/build/
+flutter/pubspec.lock

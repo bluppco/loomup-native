@@ -134,6 +134,48 @@ class AuthTokens {
       };
 }
 
+enum OAuthProvider { google, apple, github }
+
+class OAuthProviderInfo {
+  final OAuthProvider provider;
+  final bool configured;
+  final String callbackUrl;
+
+  const OAuthProviderInfo({
+    required this.provider,
+    required this.configured,
+    required this.callbackUrl,
+  });
+
+  factory OAuthProviderInfo.fromJson(Map<String, dynamic> json) =>
+      OAuthProviderInfo(
+        provider: OAuthProvider.values.firstWhere(
+          (value) => value.name == json['provider'],
+        ),
+        configured: json['configured'] == true,
+        callbackUrl: json['callback_url'] as String? ?? '',
+      );
+}
+
+class OAuthAuthorization {
+  final String authorizationUrl;
+  final String codeVerifier;
+  final int expiresIn;
+
+  const OAuthAuthorization({
+    required this.authorizationUrl,
+    required this.codeVerifier,
+    required this.expiresIn,
+  });
+
+  factory OAuthAuthorization.fromJson(Map<String, dynamic> json) =>
+      OAuthAuthorization(
+        authorizationUrl: json['authorization_url'] as String? ?? '',
+        codeVerifier: json['code_verifier'] as String? ?? '',
+        expiresIn: _asInt(json['expires_in']),
+      );
+}
+
 /// Minimal session shape for [LoomupClient.setSession].
 class SessionTokens {
   final String accessToken;

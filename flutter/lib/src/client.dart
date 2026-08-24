@@ -16,8 +16,9 @@ class LoomupClientOptions {
   final String url;
   final String? token;
   final String? refreshToken;
+  @Deprecated(
+      'publishableKey is a non-authorizing project identifier and is not a secret')
   final String? publishableKey;
-  final String? serviceKey;
   final HttpTransport? http;
   final WebSocketFactory? webSocketFactory;
   final void Function(AuthTokens? tokens)? onTokens;
@@ -27,7 +28,6 @@ class LoomupClientOptions {
     this.token,
     this.refreshToken,
     this.publishableKey,
-    this.serviceKey,
     this.http,
     this.webSocketFactory,
     this.onTokens,
@@ -40,7 +40,6 @@ LoomupClient createClient({
   String? token,
   String? refreshToken,
   String? publishableKey,
-  String? serviceKey,
   HttpTransport? http,
   WebSocketFactory? webSocketFactory,
   void Function(AuthTokens? tokens)? onTokens,
@@ -51,7 +50,6 @@ LoomupClient createClient({
       token: token,
       refreshToken: refreshToken,
       publishableKey: publishableKey,
-      serviceKey: serviceKey,
       http: http,
       webSocketFactory: webSocketFactory,
       onTokens: onTokens,
@@ -66,7 +64,6 @@ class LoomupClient {
   final WebSocketFactory _webSocketFactory;
   final void Function(AuthTokens? tokens)? _onTokens;
   final String? _publishableKey;
-  final String? _serviceKey;
 
   String? _token;
   String? _refreshToken;
@@ -88,8 +85,7 @@ class LoomupClient {
         _webSocketFactory =
             options.webSocketFactory ?? (() => WebSocketChannelConnection()),
         _onTokens = options.onTokens,
-        _publishableKey = options.publishableKey,
-        _serviceKey = options.serviceKey {
+        _publishableKey = options.publishableKey {
     var base = options.url;
     while (base.endsWith('/')) {
       base = base.substring(0, base.length - 1);
@@ -195,8 +191,6 @@ class LoomupClient {
     final access = _token;
     if (access != null) {
       requestHeaders['Authorization'] = 'Bearer $access';
-    } else if (_serviceKey != null) {
-      requestHeaders['Authorization'] = 'Bearer $_serviceKey';
     }
     if (_publishableKey != null) {
       requestHeaders['X-Loomup-Key'] = _publishableKey!;
@@ -256,8 +250,6 @@ class LoomupClient {
     final access = _token;
     if (access != null) {
       h['Authorization'] = 'Bearer $access';
-    } else if (_serviceKey != null) {
-      h['Authorization'] = 'Bearer $_serviceKey';
     }
     if (_publishableKey != null) {
       h['X-Loomup-Key'] = _publishableKey!;
@@ -323,9 +315,8 @@ class LoomupClient {
       if (json is Map) {
         final err = json['error'];
         if (err is Map) {
-          final msg = err['message']?.toString() ??
-              json['message']?.toString() ??
-              text;
+          final msg =
+              err['message']?.toString() ?? json['message']?.toString() ?? text;
           return LoomupException(
             msg,
             code: err['code']?.toString(),
@@ -377,6 +368,47 @@ class LoomupClient {
       'POST',
       '/auth/login',
       body: {'email': email, 'password': password},
+      skipRetry: true,
+    );
+    final tokens = AuthTokens.fromJson(
+      Map<String, dynamic>.from(json['data'] as Map),
+    );
+    _applyTokens(tokens);
+    return tokens;
+  }
+
+  Future<List<OAuthProviderInfo>> oauthProviders() async {
+    final json = await requestJson('GET', '/auth/oauth/providers');
+    return (json['data'] as List<dynamic>? ?? const [])
+        .map((value) => OAuthProviderInfo.fromJson(
+              Map<String, dynamic>.from(value as Map),
+            ))
+        .toList(growable: false);
+  }
+
+  Future<OAuthAuthorization> authorizeOAuth({
+    required OAuthProvider provider,
+    required String redirectTo,
+  }) async {
+    final json = await requestJson(
+      'POST',
+      '/auth/oauth/authorize',
+      body: {'provider': provider.name, 'redirect_to': redirectTo},
+      skipRetry: true,
+    );
+    return OAuthAuthorization.fromJson(
+      Map<String, dynamic>.from(json['data'] as Map),
+    );
+  }
+
+  Future<AuthTokens> exchangeOAuthCode({
+    required String code,
+    required String codeVerifier,
+  }) async {
+    final json = await requestJson(
+      'POST',
+      '/auth/oauth/exchange',
+      body: {'code': code, 'code_verifier': codeVerifier},
       skipRetry: true,
     );
     final tokens = AuthTokens.fromJson(
@@ -908,6 +940,67 @@ class AuthAPI {
     required String password,
   }) =>
       signIn(email: email, password: password);
+
+  Future<List<OAuthProviderInfo>> oauthProviders() => _client.oauthProviders();
+
+  Future<OAuthAuthorization> authorizeOAuth({
+    required OAuthProvider provider,
+    required String redirectTo,
+  }) =>
+      _client.authorizeOAuth(provider: provider, redirectTo: redirectTo);
+
+  Future<AuthTokens> exchangeOAuthCode({
+    required String code,
+    required String codeVerifier,
+  }) =>
+      _client.exchangeOAuthCode(code: code, codeVerifier: codeVerifier);
+
+  Future<AuthTokens> signInWithOAuth({
+    required OAuthProvider provider,
+    required String redirectTo,
+    required Future<String> Function(String authorizationUrl, String redirectTo)
+        openAuthSession,
+  }) async {
+    final authorization = await authorizeOAuth(
+      provider: provider,
+      redirectTo: redirectTo,
+    );
+    final redirect = Uri.parse(redirectTo);
+    final callback = Uri.parse(await openAuthSession(
+      authorization.authorizationUrl,
+      redirectTo,
+    ));
+    final callbackMatchesRedirect =
+        callback.scheme.toLowerCase() == redirect.scheme.toLowerCase() &&
+            callback.userInfo == redirect.userInfo &&
+            callback.host.toLowerCase() == redirect.host.toLowerCase() &&
+            callback.port == redirect.port &&
+            callback.path == redirect.path;
+    if (!callbackMatchesRedirect) {
+      throw const LoomupException(
+        'OAuth callback does not match redirectTo',
+        code: 'oauth_callback_mismatch',
+      );
+    }
+    final providerError = callback.queryParameters['error'];
+    if (providerError != null) {
+      throw LoomupException(
+        'OAuth sign-in failed: $providerError',
+        code: providerError,
+      );
+    }
+    final code = callback.queryParameters['code'];
+    if (code == null || code.isEmpty) {
+      throw const LoomupException(
+        'OAuth callback did not include a code',
+        code: 'oauth_callback_missing',
+      );
+    }
+    return exchangeOAuthCode(
+      code: code,
+      codeVerifier: authorization.codeVerifier,
+    );
+  }
 
   Future<void> signOut() => _client.signOut();
 

@@ -3,12 +3,27 @@ package com.loomup.client
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /** Join base URL with a path (path may be absolute-looking `/api/...`). */
 fun joinUrl(base: String, path: String): String {
     val trimmed = base.trimEnd('/')
     val p = if (path.startsWith("/")) path else "/$path"
     return trimmed + p
+}
+
+/**
+ * Normalize with OkHttp while excluding a reverse-proxy prefix in the SDK base URL.
+ * Loomup binds the logical backend route it sees after proxy path rewriting.
+ */
+internal fun normalizedHttpUrlAndTarget(base: String, path: String): Pair<String, String> {
+    val url = joinUrl(base, path).toHttpUrl()
+    val logicalUrl = joinUrl("https://loomup.invalid", path).toHttpUrl()
+    val target = buildString {
+        append(logicalUrl.encodedPath)
+        logicalUrl.encodedQuery?.let { append('?').append(it) }
+    }
+    return url.toString() to target
 }
 
 /**

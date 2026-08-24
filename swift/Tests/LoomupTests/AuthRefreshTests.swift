@@ -4,14 +4,12 @@ import XCTest
 final class AuthRefreshTests: XCTestCase {
     func testOn401RefreshesOnceAndRetries() async throws {
         let http = MockHTTP()
-        var access = "old-access"
         http.handler = { method, url, auth, body in
             if url.hasSuffix("/auth/refresh") {
-                access = "new-access"
                 return (
                     jsonData([
                         "data": [
-                            "access_token": access,
+                            "access_token": "new-access",
                             "refresh_token": "refresh-2",
                             "token_type": "Bearer",
                             "expires_in": 900,

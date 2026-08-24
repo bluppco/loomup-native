@@ -26,8 +26,10 @@ data class LoomupClientOptions(
     val url: String,
     val token: String? = null,
     val refreshToken: String? = null,
+    /** Legacy non-authorizing project identifier; never a backend credential. */
     val publishableKey: String? = null,
-    val serviceKey: String? = null,
+    val appIntegrityProvider: AppIntegrityProvider? = null,
+    val refreshTokenStore: RefreshTokenStore? = null,
     val http: HttpTransport = OkHttpHttpTransport(),
     val webSocketFactory: WebSocketFactory? = null,
 )
@@ -38,7 +40,8 @@ fun createClient(
     token: String? = null,
     refreshToken: String? = null,
     publishableKey: String? = null,
-    serviceKey: String? = null,
+    appIntegrityProvider: AppIntegrityProvider? = null,
+    refreshTokenStore: RefreshTokenStore? = null,
     http: HttpTransport = OkHttpHttpTransport(),
     webSocketFactory: WebSocketFactory? = null,
 ): LoomupClient {
@@ -48,7 +51,8 @@ fun createClient(
             token = token,
             refreshToken = refreshToken,
             publishableKey = publishableKey,
-            serviceKey = serviceKey,
+            appIntegrityProvider = appIntegrityProvider,
+            refreshTokenStore = refreshTokenStore,
             http = http,
             webSocketFactory = webSocketFactory,
         ),
