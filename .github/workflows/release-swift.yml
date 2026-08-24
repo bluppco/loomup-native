@@ -1,0 +1,27 @@
+name: Swift SDK Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Swift packages
+        run: swift test -Xswiftc -warnings-as-errors
+      - name: Compile iOS App Attest integration
+        run: |
+          IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          swift build \
+            --configuration release \
+            --triple arm64-apple-ios16.0 \
+            --sdk "$IOS_SDK" \
+            --scratch-path "$RUNNER_TEMP/loomup-native-ios-build" \
+            -Xswiftc -warnings-as-errors
