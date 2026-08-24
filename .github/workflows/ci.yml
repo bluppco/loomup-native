@@ -17,11 +17,14 @@ jobs:
       - name: Test Swift packages
         run: swift test -Xswiftc -warnings-as-errors
       - name: Compile iOS App Attest integration
-        run: >-
-          xcodebuild -scheme LoomupAppIntegrity
-          -destination 'generic/platform=iOS'
-          -derivedDataPath "$RUNNER_TEMP/loomup-native-derived"
-          CODE_SIGNING_ALLOWED=NO build
+        run: |
+          IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          swift build \
+            --configuration release \
+            --triple arm64-apple-ios16.0 \
+            --sdk "$IOS_SDK" \
+            --scratch-path "$RUNNER_TEMP/loomup-native-ios-build" \
+            -Xswiftc -warnings-as-errors
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
