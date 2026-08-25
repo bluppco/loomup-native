@@ -18,6 +18,50 @@ final class RealtimeTests: XCTestCase {
         c.closeRealtime()
     }
 
+    func testResumeRealtimeReplacesStaleSocketAndKeepsSubscriptions() async throws {
+        let http = MockHTTP()
+        http.handler = { _, url, _, _ in
+            if url.contains("/api/todos/7") {
+                return (jsonData(["data": ["id": 7, "title": "foreground"]]), 200)
+            }
+            return (Data("nope".utf8), 404)
+        }
+        let box = MockWebSocketBox()
+        let events = LockedValue<[ChangeEvent]>([])
+        let c = createClient(
+            url: URL(string: "http://example.test")!,
+            token: "access",
+            http: http,
+            webSocketFactory: box.factory()
+        )
+        let unsub = c.from("todos").subscribe(rowId: "7") { event in
+            events.withValue { $0.append(event) }
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let first = box.socket
+
+        c.resumeRealtime()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let second = box.socket
+        XCTAssertNotNil(first)
+        XCTAssertNotNil(second)
+        XCTAssertFalse(first === second)
+        XCTAssertEqual(first?.isOpen, false)
+        let frames = second?.parsedSent() ?? []
+        XCTAssertTrue(frames.contains {
+            ($0["type"] as? String) == "subscribe"
+                && ($0["table"] as? String) == "todos"
+                && ($0["id"] as? String) == "7"
+        })
+        XCTAssertTrue(events.snapshot().contains {
+            $0.op == "RESYNC" && $0.id == "7" && $0.data?["title"]?.stringValue == "foreground"
+        })
+
+        unsub()
+        c.closeRealtime()
+    }
+
     func testControlErrorFramesSurfaceWithCode() async throws {
         let box = MockWebSocketBox()
         let c = createClient(

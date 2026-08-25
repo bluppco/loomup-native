@@ -28,6 +28,50 @@ class RealtimeTest {
     }
 
     @Test
+    fun resumeRealtimeReplacesStaleSocketAndKeepsSubscriptions() = runBlocking {
+        val http = MockHttp()
+        http.handler = { _, url, _, _ ->
+            if (url.contains("/api/todos/7")) {
+                jsonBytes("""{"data":{"id":7,"title":"foreground"}}""") to 200
+            } else {
+                jsonBytes("nope") to 404
+            }
+        }
+        val box = MockWebSocketBox()
+        val events = mutableListOf<ChangeEvent>()
+        val c = createClient(
+            url = "http://example.test",
+            token = "access",
+            http = http,
+            webSocketFactory = box.factory(),
+        )
+        val unsub = c.from("todos").subscribe(rowId = "7") { events.add(it) }
+        delay(50)
+        val first = box.socket
+
+        c.resumeRealtime()
+        delay(100)
+
+        val second = box.socket
+        assertNotNull(first)
+        assertNotNull(second)
+        assertTrue(first !== second)
+        assertEquals(false, first.isOpen)
+        val frames = second.parsedSent()
+        assertTrue(frames.any {
+            it["type"]?.jsonPrimitive?.contentOrNull == "subscribe" &&
+                it["table"]?.jsonPrimitive?.contentOrNull == "todos" &&
+                it["id"]?.jsonPrimitive?.contentOrNull == "7"
+        })
+        assertTrue(events.any {
+            it.op == "RESYNC" && it.id == "7" && it.data?.get("title")?.stringValue == "foreground"
+        })
+
+        unsub()
+        c.closeRealtime()
+    }
+
+    @Test
     fun controlErrorFramesSurfaceWithCode() = runBlocking {
         val box = MockWebSocketBox()
         val c = createClient(

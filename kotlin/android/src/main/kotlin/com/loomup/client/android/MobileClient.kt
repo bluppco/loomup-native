@@ -1,5 +1,6 @@
 package com.loomup.client.android
 
+import android.app.Application
 import android.content.Context
 import com.loomup.client.HttpTransport
 import com.loomup.client.LoomupClient
@@ -19,7 +20,7 @@ fun createAndroidClient(
 ): LoomupClient {
     val refreshStore = AndroidRefreshTokenStore(context, appId)
     val integrity = PlayIntegrityProvider(context, url, appId, cloudProjectNumber, http)
-    return LoomupClient(
+    val client = LoomupClient(
         LoomupClientOptions(
             url = url,
             token = token,
@@ -29,4 +30,6 @@ fun createAndroidClient(
             webSocketFactory = webSocketFactory,
         ),
     )
+    (context.applicationContext as? Application)?.observeRealtimeLifecycle(client)
+    return client
 }

@@ -12,13 +12,13 @@ Use the repository's semantic-versioned Git release:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.2"
+        from: "0.1.3"
     )
 ]
 ```
 
 The repository root is the published Swift Package Manager package. It exposes
-the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.2` requirement
+the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.3` requirement
 when automatic patch updates are not desired.
 
 ### Local path
@@ -84,6 +84,10 @@ On unexpected close the SDK reconnects with **exponential backoff + full jitter*
 client.setTablePrimaryKey(table: "keys", pk: "slug")
 ```
 
+On iOS and tvOS the client also observes the app becoming active and replaces
+the possibly stale socket immediately without dropping subscriptions. Other
+hosts can call `resumeRealtime()` from their foreground lifecycle callback.
+
 ## Testing
 
 ```bash
@@ -96,7 +100,7 @@ cd sdk/swift && swift test
 |------|---------|
 | Auth | `signUp` / `register`, `signIn` / `login`, `signOut` / `logout`, `me`, `refresh` |
 | CRUD | `from(table).select/get/insert/update/delete` |
-| Realtime | `subscribe`, `subscribeReady`, `onControl`, `closeRealtime` |
+| Realtime | `subscribe`, `subscribeReady`, `onControl`, `resumeRealtime`, `closeRealtime` |
 | Offline | `offline`, `find/get/create/update/remove`, `statusStream`, `sync`, `setOnline` |
 
 Row payloads use `JSONValue` (dynamic tables; Swift codegen is a future enhancement).

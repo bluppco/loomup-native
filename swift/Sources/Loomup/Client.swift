@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 /// Options for constructing a client.
 public struct LoomupClientOptions: Sendable {
     public var url: URL
@@ -85,6 +89,10 @@ public final class LoomupClient: @unchecked Sendable {
     private var tablePrimaryKeys: [String: String] = [:]
     private var refreshingTask: Task<AuthTokens, Error>?
 
+    #if canImport(UIKit)
+    private var foregroundObserver: NSObjectProtocol?
+    #endif
+
     private struct PendingAck {
         let continuation: CheckedContinuation<Void, Error>
         let workItem: DispatchWorkItem
@@ -106,6 +114,24 @@ public final class LoomupClient: @unchecked Sendable {
         self.webSocketFactory = options.webSocketFactory ?? {
             URLSessionWebSocketConnection()
         }
+
+        #if canImport(UIKit)
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.resumeRealtime()
+        }
+        #endif
+    }
+
+    deinit {
+        #if canImport(UIKit)
+        if let foregroundObserver {
+            NotificationCenter.default.removeObserver(foregroundObserver)
+        }
+        #endif
     }
 
     public convenience init(
@@ -819,6 +845,29 @@ public final class LoomupClient: @unchecked Sendable {
         }
     }
 
+    /// Re-establish realtime after an app returns to the foreground.
+    /// Active subscriptions are retained, re-subscribed, and resynchronized.
+    public func resumeRealtime() {
+        lock.lock()
+        guard !subs.isEmpty else {
+            lock.unlock()
+            return
+        }
+        intentionalClose = false
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+        reconnectAttempt = 0
+        let socket = ws
+        ws = nil
+        lock.unlock()
+
+        socket?.onOpen = nil
+        socket?.onMessage = nil
+        socket?.onClose = nil
+        socket?.close()
+        ensureWs()
+    }
+
     public func closeRealtime() {
         lock.lock()
         intentionalClose = true
@@ -871,8 +920,9 @@ public final class LoomupClient: @unchecked Sendable {
         socket.onMessage = { [weak self] text in
             self?.handleMessage(text)
         }
-        socket.onClose = { [weak self] in
-            self?.handleClose()
+        socket.onClose = { [weak self, weak socket] in
+            guard let socket else { return }
+            self?.handleClose(socket)
         }
         socket.connect(url: realtimeWebSocketURL(from: url))
     }
@@ -978,8 +1028,12 @@ public final class LoomupClient: @unchecked Sendable {
         return s.isEmpty ? nil : s
     }
 
-    private func handleClose() {
+    private func handleClose(_ socket: WebSocketConnecting) {
         lock.lock()
+        guard ws === socket else {
+            lock.unlock()
+            return
+        }
         ws = nil
         let shouldReconnect = !intentionalClose && !subs.isEmpty
         lock.unlock()

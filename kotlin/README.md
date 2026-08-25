@@ -82,6 +82,10 @@ On unexpected close the SDK reconnects with **exponential backoff + full jitter*
 client.setTablePrimaryKey("keys", "slug")
 ```
 
+Clients created with `createAndroidClient(...)` reconnect automatically when
+the application returns to the foreground. JVM and custom Android hosts can
+call `resumeRealtime()` from their lifecycle callback.
+
 Subscribe callbacks may run on background threads (OkHttp). Hop to the main/UI thread if updating UI.
 
 ## Testing / injectables
@@ -98,7 +102,7 @@ cd sdk/kotlin && ./gradlew test
 |------|---------|
 | Auth | `signUp` / `register`, `signIn` / `login`, `signOut` / `logout`, `me`, `refresh` |
 | CRUD | `from(table).select/get/insert/update/delete` |
-| Realtime | `subscribe`, `subscribeReady`, `onControl`, `closeRealtime` |
+| Realtime | `subscribe`, `subscribeReady`, `onControl`, `resumeRealtime`, `closeRealtime` |
 | Offline | `offline`, `find/get/create/update/remove`, `status`, `sync`, `setOnline` |
 
 Row payloads use `JsonValue` (dynamic tables; Kotlin codegen is a future enhancement).

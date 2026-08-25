@@ -105,6 +105,11 @@ On unexpected close the SDK reconnects with **exponential backoff + full jitter*
 client.setTablePrimaryKey('keys', 'slug');
 ```
 
+Because this package also supports pure Dart, it does not depend on Flutter's
+lifecycle APIs. Flutter apps should call `client.resumeRealtime()` when a
+`WidgetsBindingObserver` receives `AppLifecycleState.resumed`; this replaces a
+possibly stale socket without dropping subscriptions.
+
 ## Testing / injectables
 
 REST uses `HttpTransport` (default `PackageHttpTransport`). Realtime uses `WebSocketFactory` (default `WebSocketChannelConnection`). Inject fakes in unit tests — same role as TypeScript’s `WebSocketImpl` and Swift’s `HTTPTransport` / `WebSocketFactory`.
@@ -119,7 +124,7 @@ cd sdk/flutter && dart pub get && dart test
 |------|---------|
 | Auth | `signUp` / `register`, `signIn` / `login`, `signOut` / `logout`, `me`, `refresh` |
 | CRUD | `from(table).select/get/insert/update/delete` |
-| Realtime | `subscribe`, `subscribeReady`, `changes`, `onControl`, `closeRealtime` |
+| Realtime | `subscribe`, `subscribeReady`, `changes`, `onControl`, `resumeRealtime`, `closeRealtime` |
 | Offline | `offline`, `find/get/create/update/remove`, `statuses`, `sync`, `setOnline` |
 
 Row payloads use `Map<String, dynamic>` (dynamic tables; Dart codegen is a future enhancement).

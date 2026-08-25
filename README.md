@@ -11,7 +11,7 @@ server and JavaScript SDK repositories.
 
 These packages are source-available and continuously tested. Swift is released
 from the root package through semantic-version Git tags; the current release is
-`0.1.2`. The release workflow verifies tagged Swift source but does not publish
+`0.1.3`. The release workflow verifies tagged Swift source but does not publish
 to Swift Package Index or a Swift package-registry server. Kotlin and Dart do
 not yet have Maven Central or pub.dev releases.
 
@@ -27,7 +27,7 @@ Add the released package from its Git URL and link both products:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.2"
+        from: "0.1.3"
     )
 ],
 targets: [
@@ -41,7 +41,7 @@ targets: [
 ]
 ```
 
-Use an exact `0.1.2` requirement when automatic patch updates are not desired.
+Use an exact `0.1.3` requirement when automatic patch updates are not desired.
 For local development, replace the URL dependency with
 `.package(path: "../loomup-native")`.
 
@@ -94,3 +94,8 @@ Android exposes `signInWithOAuth(client, provider, redirectTo, launcher)` in
 the Android library; the app supplies its Custom Tab/deep-link launcher. Flutter
 exposes the same authorize/exchange flow with an injected URL launcher so no
 browser plugin is forced on applications.
+
+Swift and Android mobile constructors reconnect realtime automatically when
+the app returns to the foreground. Flutter apps call `resumeRealtime()` from
+their `AppLifecycleState.resumed` handler so active subscriptions are preserved,
+re-subscribed, and resynchronized after a background suspension.

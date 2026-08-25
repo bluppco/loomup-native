@@ -68,6 +68,60 @@ void main() {
     c.closeRealtime();
   });
 
+  test('resumeRealtime replaces stale socket and keeps subscriptions',
+      () async {
+    final http = MockHttp();
+    http.handler = (method, url, auth, body) async {
+      if (url.contains('/api/todos/7')) {
+        return (
+          body: jsonBytes({
+            'data': {'id': 7, 'title': 'foreground'},
+          }),
+          status: 200,
+        );
+      }
+      return (body: 'nope'.codeUnits, status: 404);
+    };
+    final box = MockWebSocketBox();
+    final events = <ChangeEvent>[];
+    final c = createClient(
+      url: 'http://example.test',
+      token: 'access',
+      http: http,
+      webSocketFactory: box.factory(),
+    );
+    final unsub = c.from('todos').subscribe(events.add, rowId: '7');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final first = box.socket;
+
+    c.resumeRealtime();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    final second = box.socket;
+    expect(first, isNotNull);
+    expect(second, isNotNull);
+    expect(identical(first, second), isFalse);
+    expect(first!.isOpen, isFalse);
+    final frames = second!.parsedSent();
+    expect(
+      frames.any((frame) =>
+          frame['type'] == 'subscribe' &&
+          frame['table'] == 'todos' &&
+          frame['id'] == '7'),
+      isTrue,
+    );
+    expect(
+      events.any((event) =>
+          event.op == 'RESYNC' &&
+          event.id == '7' &&
+          event.data?['title'] == 'foreground'),
+      isTrue,
+    );
+
+    unsub();
+    c.closeRealtime();
+  });
+
   test('control error frames surface with code', () async {
     final box = MockWebSocketBox();
     final c = createClient(

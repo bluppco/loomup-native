@@ -621,6 +621,24 @@ class LoomupClient {
     }
   }
 
+  /// Re-establish realtime after the app returns to the foreground.
+  /// Active subscriptions are retained, re-subscribed, and resynchronized.
+  void resumeRealtime() {
+    if (_subs.isEmpty) return;
+    _intentionalClose = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
+    final socket = _ws;
+    _ws = null;
+
+    socket?.onOpen = null;
+    socket?.onMessage = null;
+    socket?.onClose = null;
+    socket?.close();
+    _ensureWs();
+  }
+
   void closeRealtime() {
     _intentionalClose = true;
     _reconnectTimer?.cancel();
@@ -659,7 +677,7 @@ class LoomupClient {
 
     socket.onOpen = _handleOpen;
     socket.onMessage = _handleMessage;
-    socket.onClose = _handleClose;
+    socket.onClose = () => _handleClose(socket);
     socket.connect(realtimeWebSocketUrl(url));
   }
 
@@ -722,7 +740,8 @@ class LoomupClient {
     }
   }
 
-  void _handleClose() {
+  void _handleClose(WebSocketConnecting socket) {
+    if (!identical(_ws, socket)) return;
     _ws = null;
     final shouldReconnect = !_intentionalClose && _subs.isNotEmpty;
     if (shouldReconnect) {

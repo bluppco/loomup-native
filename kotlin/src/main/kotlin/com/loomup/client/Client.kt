@@ -657,6 +657,23 @@ class LoomupClient(options: LoomupClientOptions) {
         }
     }
 
+    /** Re-establish realtime after the app returns to the foreground. */
+    fun resumeRealtime() {
+        if (subs.isEmpty()) return
+        intentionalClose = false
+        reconnectJob?.cancel()
+        reconnectJob = null
+        reconnectAttempt = 0
+        val socket = ws
+        ws = null
+
+        socket?.onOpen = null
+        socket?.onMessage = null
+        socket?.onClose = null
+        socket?.close()
+        ensureWs()
+    }
+
     fun closeRealtime() {
         intentionalClose = true
         reconnectJob?.cancel()
@@ -695,7 +712,7 @@ class LoomupClient(options: LoomupClientOptions) {
 
         socket.onOpen = { handleOpen() }
         socket.onMessage = { text -> handleMessage(text) }
-        socket.onClose = { handleClose() }
+        socket.onClose = { handleClose(socket) }
         socket.connect(realtimeWebSocketUrl(url))
     }
 
@@ -790,7 +807,8 @@ class LoomupClient(options: LoomupClientOptions) {
         return prim.content
     }
 
-    private fun handleClose() {
+    private fun handleClose(socket: WebSocketConnecting) {
+        if (ws !== socket) return
         ws = null
         val shouldReconnect = !intentionalClose && subs.isNotEmpty()
         if (shouldReconnect) {
