@@ -9,10 +9,11 @@ server and JavaScript SDK repositories.
 - `flutter/` — Dart/Flutter client retained for a later integrity rollout.
 - `conformance/` — language-neutral client fixtures.
 
-These packages are source-available and continuously tested, but this
-repository intentionally has no package-publishing, signing, or deployment
-workflow. Releasing requires a separate decision and platform-specific tag
-(`swift-v*`, `kotlin-v*`, or `dart-v*`).
+These packages are source-available and continuously tested. Swift is released
+from the root package through semantic-version Git tags; the current release is
+`0.1.2`. The release workflow verifies tagged Swift source but does not publish
+to Swift Package Index or a Swift package-registry server. Kotlin and Dart do
+not yet have Maven Central or pub.dev releases.
 
 Mobile applications must never embed a Loomup service key. User access tokens
 remain the authorization principal; app integrity is an additional anti-abuse
@@ -20,12 +21,14 @@ signal for projects that opt into it.
 
 ## Swift Package Manager
 
-Until a release is intentionally tagged, add this repository as a local Swift
-package (or pin a Git revision) and link both products:
+Add the released package from its Git URL and link both products:
 
 ```swift
 dependencies: [
-    .package(path: "../loomup-native")
+    .package(
+        url: "https://github.com/bluppco/loomup-native.git",
+        from: "0.1.2"
+    )
 ],
 targets: [
     .target(
@@ -37,6 +40,10 @@ targets: [
     )
 ]
 ```
+
+Use an exact `0.1.2` requirement when automatic patch updates are not desired.
+For local development, replace the URL dependency with
+`.package(path: "../loomup-native")`.
 
 For an iOS 16+ App Store or TestFlight app, construct the client with the
 manifest app identifier, not a backend credential:
@@ -78,8 +85,10 @@ standard Play Integrity tokens bound to the exact mutation and stores only the
 refresh token using a non-exportable Android Keystore key. The project number
 and `appId` are identifiers, not secrets.
 
-The repository CI builds and tests these packages but intentionally does not
-publish Maven, Swift, Dart, CocoaPods, or other artifacts.
+The repository CI builds and tests all native packages. Swift releases use Git
+tags consumable by Swift Package Manager; they are not separately listed or
+uploaded to Swift Package Index, a Swift package-registry server, or CocoaPods.
+Kotlin and Dart are not published to Maven Central or pub.dev.
 
 Android exposes `signInWithOAuth(client, provider, redirectTo, launcher)` in
 the Android library; the app supplies its Custom Tab/deep-link launcher. Flutter

@@ -2,23 +2,37 @@
 
 Swift client for [Loomup Realtime](../../README.md) — auth, REST CRUD, and WebSocket subscriptions.
 
-Requires **Swift 5.7+** and **iOS 15 / macOS 12** (or later).
+Requires **Swift 5.9+** and **iOS 16 / macOS 12** (or later).
 
 ## Install (Swift Package Manager)
 
-### Local path (monorepo)
+Use the repository's semantic-versioned Git release:
+
+```swift
+dependencies: [
+    .package(
+        url: "https://github.com/bluppco/loomup-native.git",
+        from: "0.1.2"
+    )
+]
+```
+
+The repository root is the published Swift Package Manager package. It exposes
+the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.2` requirement
+when automatic patch updates are not desired.
+
+### Local path
 
 In your app’s `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(path: "../path/to/base/sdk/swift"),
+    .package(path: "../loomup-native"),
 ]
 ```
 
-Or in Xcode: **File → Add Package Dependencies…** → **Add Local…** → select `sdk/swift`.
-
-Published Swift package coordinates will be listed at [tryloomup.com/docs](https://tryloomup.com/docs). For monorepo layouts, the package lives at `sdk/swift` (this directory is the SPM root).
+Or in Xcode: **File → Add Package Dependencies…** → **Add Local…** →
+select the `loomup-native` repository root.
 
 ## Quick start
 

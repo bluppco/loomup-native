@@ -1,11 +1,12 @@
 /// Convert an HTTP(S) API base URL to the realtime WebSocket URL (`/realtime`).
 Uri realtimeWebSocketUrl(Uri httpBase) {
   final scheme = httpBase.scheme.toLowerCase() == 'https' ? 'wss' : 'ws';
+  final basePath = httpBase.path.replaceFirst(RegExp(r'/+$'), '');
   return Uri(
     scheme: scheme,
     host: httpBase.host,
     port: httpBase.hasPort ? httpBase.port : null,
-    path: '/realtime',
+    path: '$basePath/realtime',
   );
 }
 

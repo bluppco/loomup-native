@@ -58,7 +58,11 @@ func realtimeWebSocketURL(from httpBase: URL) -> URL {
     default:
         components.scheme = "ws"
     }
-    components.path = "/realtime"
+    var basePath = components.path
+    while basePath.hasSuffix("/") {
+        basePath.removeLast()
+    }
+    components.path = "\(basePath)/realtime"
     components.query = nil
     components.fragment = nil
     return components.url!
