@@ -169,12 +169,14 @@ final class MockWebSocket: WebSocketConnecting, @unchecked Sendable {
 final class MockWebSocketBox: @unchecked Sendable {
     private let lock = NSLock()
     private var current: MockWebSocket?
+    private var created: [MockWebSocket] = []
     var autoOpen = true
     var openDelay: TimeInterval = 0
 
     func note(_ ws: MockWebSocket) {
         lock.lock()
         current = ws
+        created.append(ws)
         lock.unlock()
     }
 
@@ -192,5 +194,11 @@ final class MockWebSocketBox: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return current
+    }
+
+    var sockets: [MockWebSocket] {
+        lock.lock()
+        defer { lock.unlock() }
+        return created
     }
 }

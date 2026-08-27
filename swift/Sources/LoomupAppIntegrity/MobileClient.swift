@@ -10,7 +10,8 @@ public func createMobileClient(
     appID: String,
     token: String? = nil,
     http: any HTTPTransport = URLSessionHTTPTransport(),
-    webSocketFactory: WebSocketFactory? = nil
+    webSocketFactory: WebSocketFactory? = nil,
+    realtimeHeartbeat: RealtimeHeartbeatOptions = RealtimeHeartbeatOptions()
 ) -> LoomupClient {
     let refreshStore = KeychainRefreshTokenStore(account: appID)
     let integrity = AppleAppIntegrityProvider(baseURL: url, appID: appID, http: http)
@@ -21,7 +22,8 @@ public func createMobileClient(
             appIntegrityProvider: integrity,
             refreshTokenStore: refreshStore,
             http: http,
-            webSocketFactory: webSocketFactory
+            webSocketFactory: webSocketFactory,
+            realtimeHeartbeat: realtimeHeartbeat
         )
     )
 }

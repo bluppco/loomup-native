@@ -11,7 +11,7 @@ server and JavaScript SDK repositories.
 
 These packages are source-available and continuously tested. Swift is released
 from the root package through semantic-version Git tags; the current release is
-`0.1.3`. The release workflow verifies tagged Swift source but does not publish
+`0.1.4`. The release workflow verifies tagged Swift source but does not publish
 to Swift Package Index or a Swift package-registry server. Kotlin and Dart do
 not yet have Maven Central or pub.dev releases.
 
@@ -27,7 +27,7 @@ Add the released package from its Git URL and link both products:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.3"
+        from: "0.1.4"
     )
 ],
 targets: [
@@ -41,7 +41,7 @@ targets: [
 ]
 ```
 
-Use an exact `0.1.3` requirement when automatic patch updates are not desired.
+Use an exact `0.1.4` requirement when automatic patch updates are not desired.
 For local development, replace the URL dependency with
 `.package(path: "../loomup-native")`.
 
@@ -99,3 +99,11 @@ Swift and Android mobile constructors reconnect realtime automatically when
 the app returns to the foreground. Flutter apps call `resumeRealtime()` from
 their `AppLifecycleState.resumed` handler so active subscriptions are preserved,
 re-subscribed, and resynchronized after a background suspension.
+
+The released Swift client also verifies application-level realtime liveness
+while at least one subscription is active. It sends correlated JSON `ping`
+text frames every 25 seconds and expects the matching JSON `pong` within 12
+seconds. A missing or mismatched response retires the socket even if it still
+reports `OPEN`; the normal jittered reconnect path then authenticates,
+re-subscribes, and refetches current authorized state. These messages complement
+the WebSocket protocol Ping/Pong frames and do not replace or disable them.

@@ -12,13 +12,13 @@ Use the repository's semantic-versioned Git release:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.3"
+        from: "0.1.4"
     )
 ]
 ```
 
 The repository root is the published Swift Package Manager package. It exposes
-the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.3` requirement
+the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.4` requirement
 when automatic patch updates are not desired.
 
 ### Local path
@@ -87,6 +87,33 @@ client.setTablePrimaryKey(table: "keys", pk: "slug")
 On iOS and tvOS the client also observes the app becoming active and replaces
 the possibly stale socket immediately without dropping subscriptions. Other
 hosts can call `resumeRealtime()` from their foreground lifecycle callback.
+
+While a socket is open and at least one subscription is active, the client
+sends an application heartbeat through the normal WebSocket text path:
+
+```json
+{"type":"ping","requestId":"hb_<unique-id>","sentAt":1787814926000}
+```
+
+Only a `pong` with the same `requestId` acknowledges that probe. If it does not
+arrive within the response timeout, the client retires the old socket even when
+it still reports `OPEN`, reconnects with the existing jitter policy, restores
+authentication and subscriptions, and refetches current authorized state.
+WebSocket protocol Ping/Pong remains enabled independently.
+
+The defaults are a 25-second interval and 12-second response timeout. Tests or
+deployments with different proxy limits can override them without changing the
+rest of the public API:
+
+```swift
+let client = createClient(
+    url: URL(string: "https://api.example.com")!,
+    realtimeHeartbeat: RealtimeHeartbeatOptions(
+        intervalMs: 20_000,
+        responseTimeoutMs: 10_000
+    )
+)
+```
 
 ## Testing
 

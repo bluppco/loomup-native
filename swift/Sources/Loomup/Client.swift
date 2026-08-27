@@ -4,6 +4,21 @@ import Foundation
 import UIKit
 #endif
 
+/// Application-level realtime heartbeat timings.
+///
+/// These text-frame probes complement (and do not replace) WebSocket protocol
+/// Ping/Pong frames. A replacement socket is opened when a matching application
+/// Pong is not received within `responseTimeoutMs`.
+public struct RealtimeHeartbeatOptions: Sendable {
+    public var intervalMs: Int
+    public var responseTimeoutMs: Int
+
+    public init(intervalMs: Int = 25_000, responseTimeoutMs: Int = 12_000) {
+        self.intervalMs = intervalMs
+        self.responseTimeoutMs = responseTimeoutMs
+    }
+}
+
 /// Options for constructing a client.
 public struct LoomupClientOptions: Sendable {
     public var url: URL
@@ -16,6 +31,7 @@ public struct LoomupClientOptions: Sendable {
     public var refreshTokenStore: (any RefreshTokenStore)?
     public var http: HTTPTransport
     public var webSocketFactory: WebSocketFactory?
+    public var realtimeHeartbeat: RealtimeHeartbeatOptions
 
     public init(
         url: URL,
@@ -25,7 +41,8 @@ public struct LoomupClientOptions: Sendable {
         appIntegrityProvider: (any AppIntegrityProvider)? = nil,
         refreshTokenStore: (any RefreshTokenStore)? = nil,
         http: HTTPTransport = URLSessionHTTPTransport(),
-        webSocketFactory: WebSocketFactory? = nil
+        webSocketFactory: WebSocketFactory? = nil,
+        realtimeHeartbeat: RealtimeHeartbeatOptions = RealtimeHeartbeatOptions()
     ) {
         self.url = url
         self.token = token
@@ -35,6 +52,7 @@ public struct LoomupClientOptions: Sendable {
         self.refreshTokenStore = refreshTokenStore
         self.http = http
         self.webSocketFactory = webSocketFactory
+        self.realtimeHeartbeat = realtimeHeartbeat
     }
 }
 
@@ -47,7 +65,8 @@ public func createClient(
     appIntegrityProvider: (any AppIntegrityProvider)? = nil,
     refreshTokenStore: (any RefreshTokenStore)? = nil,
     http: HTTPTransport = URLSessionHTTPTransport(),
-    webSocketFactory: WebSocketFactory? = nil
+    webSocketFactory: WebSocketFactory? = nil,
+    realtimeHeartbeat: RealtimeHeartbeatOptions = RealtimeHeartbeatOptions()
 ) -> LoomupClient {
     LoomupClient(
         options: LoomupClientOptions(
@@ -58,7 +77,8 @@ public func createClient(
             appIntegrityProvider: appIntegrityProvider,
             refreshTokenStore: refreshTokenStore,
             http: http,
-            webSocketFactory: webSocketFactory
+            webSocketFactory: webSocketFactory,
+            realtimeHeartbeat: realtimeHeartbeat
         )
     )
 }
@@ -69,6 +89,8 @@ public final class LoomupClient: @unchecked Sendable {
 
     private let http: HTTPTransport
     private let webSocketFactory: WebSocketFactory
+    private let heartbeatIntervalMs: Int
+    private let heartbeatResponseTimeoutMs: Int
     private let lock = NSLock()
 
     private var token: String?
@@ -83,6 +105,9 @@ public final class LoomupClient: @unchecked Sendable {
     private var controlHandlers: [UUID: ControlHandler] = [:]
     private var pendingSubscribeAcks: [String: PendingAck] = [:]
     private var reconnectWorkItem: DispatchWorkItem?
+    private var heartbeatIntervalWorkItem: DispatchWorkItem?
+    private var heartbeatTimeoutWorkItem: DispatchWorkItem?
+    private var pendingHeartbeatRequestId: String?
     private var intentionalClose = false
     private var hasOpenedOnce = false
     private var reconnectAttempt = 0
@@ -111,6 +136,8 @@ public final class LoomupClient: @unchecked Sendable {
         self.appIntegrityProvider = options.appIntegrityProvider
         self.refreshTokenStore = options.refreshTokenStore
         self.http = options.http
+        self.heartbeatIntervalMs = max(1, options.realtimeHeartbeat.intervalMs)
+        self.heartbeatResponseTimeoutMs = max(1, options.realtimeHeartbeat.responseTimeoutMs)
         self.webSocketFactory = options.webSocketFactory ?? {
             URLSessionWebSocketConnection()
         }
@@ -127,6 +154,9 @@ public final class LoomupClient: @unchecked Sendable {
     }
 
     deinit {
+        heartbeatIntervalWorkItem?.cancel()
+        heartbeatTimeoutWorkItem?.cancel()
+        reconnectWorkItem?.cancel()
         #if canImport(UIKit)
         if let foregroundObserver {
             NotificationCenter.default.removeObserver(foregroundObserver)
@@ -142,7 +172,8 @@ public final class LoomupClient: @unchecked Sendable {
         appIntegrityProvider: (any AppIntegrityProvider)? = nil,
         refreshTokenStore: (any RefreshTokenStore)? = nil,
         http: HTTPTransport = URLSessionHTTPTransport(),
-        webSocketFactory: WebSocketFactory? = nil
+        webSocketFactory: WebSocketFactory? = nil,
+        realtimeHeartbeat: RealtimeHeartbeatOptions = RealtimeHeartbeatOptions()
     ) {
         self.init(
             options: LoomupClientOptions(
@@ -153,7 +184,8 @@ public final class LoomupClient: @unchecked Sendable {
                 appIntegrityProvider: appIntegrityProvider,
                 refreshTokenStore: refreshTokenStore,
                 http: http,
-                webSocketFactory: webSocketFactory
+                webSocketFactory: webSocketFactory,
+                realtimeHeartbeat: realtimeHeartbeat
             )
         )
     }
@@ -785,6 +817,9 @@ public final class LoomupClient: @unchecked Sendable {
 
         ensureWs()
         _ = sendSubscribe(table: table, rowId: rowId)
+        if let socket = lock.withLock({ ws }) {
+            scheduleNextHeartbeat(for: socket)
+        }
 
         return { [weak self] in
             guard let self else { return }
@@ -794,6 +829,7 @@ public final class LoomupClient: @unchecked Sendable {
             if last {
                 self.subs.removeValue(forKey: key)
             }
+            let noSubscriptions = self.subs.isEmpty
             self.lock.unlock()
             if last {
                 var msg: [String: Any] = [
@@ -803,6 +839,9 @@ public final class LoomupClient: @unchecked Sendable {
                 ]
                 if let rowId { msg["id"] = rowId }
                 self.sendJSON(msg)
+            }
+            if noSubscriptions {
+                self.stopHeartbeat()
             }
         }
     }
@@ -857,6 +896,7 @@ public final class LoomupClient: @unchecked Sendable {
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
         reconnectAttempt = 0
+        clearHeartbeatLocked()
         let socket = ws
         ws = nil
         lock.unlock()
@@ -873,6 +913,7 @@ public final class LoomupClient: @unchecked Sendable {
         intentionalClose = true
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
+        clearHeartbeatLocked()
         let socket = ws
         ws = nil
         subs.removeAll()
@@ -881,6 +922,9 @@ public final class LoomupClient: @unchecked Sendable {
         pendingSubscribeAcks.removeAll()
         lock.unlock()
 
+        socket?.onOpen = nil
+        socket?.onMessage = nil
+        socket?.onClose = nil
         socket?.close()
         for (_, p) in pending {
             p.workItem.cancel()
@@ -914,11 +958,13 @@ public final class LoomupClient: @unchecked Sendable {
         ws = socket
         lock.unlock()
 
-        socket.onOpen = { [weak self] in
-            self?.handleOpen()
+        socket.onOpen = { [weak self, weak socket] in
+            guard let socket else { return }
+            self?.handleOpen(socket)
         }
-        socket.onMessage = { [weak self] text in
-            self?.handleMessage(text)
+        socket.onMessage = { [weak self, weak socket] text in
+            guard let socket else { return }
+            self?.handleMessage(text, from: socket)
         }
         socket.onClose = { [weak self, weak socket] in
             guard let socket else { return }
@@ -927,8 +973,14 @@ public final class LoomupClient: @unchecked Sendable {
         socket.connect(url: realtimeWebSocketURL(from: url))
     }
 
-    private func handleOpen() {
+    private func handleOpen(_ socket: WebSocketConnecting) {
         lock.lock()
+        guard ws === socket else {
+            lock.unlock()
+            return
+        }
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
         reconnectAttempt = 0
         let access = token
         let keys = Array(subs.keys)
@@ -944,6 +996,7 @@ public final class LoomupClient: @unchecked Sendable {
             let parsed = parseSubKey(key)
             _ = sendSubscribe(table: parsed.table, rowId: parsed.rowId)
         }
+        scheduleNextHeartbeat(for: socket)
         if shouldResync {
             Task { [weak self] in
                 await self?.resyncSubscriptions()
@@ -951,7 +1004,8 @@ public final class LoomupClient: @unchecked Sendable {
         }
     }
 
-    private func handleMessage(_ text: String) {
+    private func handleMessage(_ text: String, from socket: WebSocketConnecting) {
+        guard lock.withLock({ ws === socket }) else { return }
         guard let data = text.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = obj["type"] as? String
@@ -986,6 +1040,10 @@ public final class LoomupClient: @unchecked Sendable {
                 ts: ts
             )
             lock.lock()
+            guard ws === socket else {
+                lock.unlock()
+                return
+            }
             let exact = subs[makeSubKey(table: table, rowId: id)] ?? [:]
             let all = subs[table] ?? [:]
             lock.unlock()
@@ -1004,11 +1062,20 @@ public final class LoomupClient: @unchecked Sendable {
             id: stringifyIdOptional(obj["id"])
         )
 
+        if type == "pong" {
+            handleApplicationPong(requestId: control.requestId, from: socket)
+            return
+        }
+
         if type == "subscribed" || type == "error" {
-            resolveSubscribeAck(control)
+            resolveSubscribeAck(control, from: socket)
         }
 
         lock.lock()
+        guard ws === socket else {
+            lock.unlock()
+            return
+        }
         let handlers = Array(controlHandlers.values)
         lock.unlock()
         for h in handlers { h(control) }
@@ -1035,6 +1102,7 @@ public final class LoomupClient: @unchecked Sendable {
             return
         }
         ws = nil
+        clearHeartbeatLocked()
         let shouldReconnect = !intentionalClose && !subs.isEmpty
         lock.unlock()
         if shouldReconnect {
@@ -1056,6 +1124,118 @@ public final class LoomupClient: @unchecked Sendable {
         reconnectWorkItem = item
         lock.unlock()
         DispatchQueue.global().asyncAfter(deadline: .now() + delay / 1000.0, execute: item)
+    }
+
+    private func scheduleNextHeartbeat(for socket: WebSocketConnecting) {
+        lock.lock()
+        guard ws === socket,
+              socket.isOpen,
+              !subs.isEmpty,
+              !intentionalClose,
+              pendingHeartbeatRequestId == nil
+        else {
+            lock.unlock()
+            return
+        }
+        heartbeatIntervalWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self, weak socket] in
+            guard let self, let socket else { return }
+            self.sendHeartbeat(on: socket)
+        }
+        heartbeatIntervalWorkItem = item
+        let delay = Double(heartbeatIntervalMs) / 1000.0
+        lock.unlock()
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    private func sendHeartbeat(on socket: WebSocketConnecting) {
+        let requestId = "hb_\(UUID().uuidString.lowercased())"
+        let sentAt = Int64(Date().timeIntervalSince1970 * 1000)
+        let timeout = DispatchWorkItem { [weak self, weak socket] in
+            guard let self, let socket else { return }
+            self.handleHeartbeatTimeout(requestId: requestId, socket: socket)
+        }
+
+        lock.lock()
+        guard ws === socket,
+              socket.isOpen,
+              !subs.isEmpty,
+              !intentionalClose,
+              pendingHeartbeatRequestId == nil
+        else {
+            lock.unlock()
+            return
+        }
+        heartbeatIntervalWorkItem = nil
+        pendingHeartbeatRequestId = requestId
+        heartbeatTimeoutWorkItem?.cancel()
+        heartbeatTimeoutWorkItem = timeout
+        let delay = Double(heartbeatResponseTimeoutMs) / 1000.0
+        lock.unlock()
+
+        sendJSON(
+            ["type": "ping", "requestId": requestId, "sentAt": sentAt],
+            through: socket
+        )
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: timeout)
+    }
+
+    private func handleApplicationPong(
+        requestId: String?,
+        from socket: WebSocketConnecting
+    ) {
+        guard let requestId else { return }
+        lock.lock()
+        guard ws === socket, pendingHeartbeatRequestId == requestId else {
+            lock.unlock()
+            return
+        }
+        pendingHeartbeatRequestId = nil
+        heartbeatTimeoutWorkItem?.cancel()
+        heartbeatTimeoutWorkItem = nil
+        lock.unlock()
+        scheduleNextHeartbeat(for: socket)
+    }
+
+    private func handleHeartbeatTimeout(
+        requestId: String,
+        socket: WebSocketConnecting
+    ) {
+        lock.lock()
+        guard ws === socket,
+              pendingHeartbeatRequestId == requestId,
+              !intentionalClose,
+              !subs.isEmpty
+        else {
+            lock.unlock()
+            return
+        }
+        clearHeartbeatLocked()
+        ws = nil
+        let shouldReconnect = !intentionalClose && !subs.isEmpty
+        lock.unlock()
+
+        socket.onOpen = nil
+        socket.onMessage = nil
+        socket.onClose = nil
+        socket.close()
+        if shouldReconnect {
+            scheduleReconnect()
+        }
+    }
+
+    private func stopHeartbeat() {
+        lock.lock()
+        clearHeartbeatLocked()
+        lock.unlock()
+    }
+
+    private func clearHeartbeatLocked() {
+        heartbeatIntervalWorkItem?.cancel()
+        heartbeatIntervalWorkItem = nil
+        heartbeatTimeoutWorkItem?.cancel()
+        heartbeatTimeoutWorkItem = nil
+        pendingHeartbeatRequestId = nil
     }
 
     private func reauthAndResubscribe() {
@@ -1099,13 +1279,22 @@ public final class LoomupClient: @unchecked Sendable {
         return rid
     }
 
-    private func sendJSON(_ msg: [String: Any]) {
+    private func sendJSON(
+        _ msg: [String: Any],
+        through expectedSocket: WebSocketConnecting? = nil
+    ) {
         guard let data = try? JSONSerialization.data(withJSONObject: msg),
               let text = String(data: data, encoding: .utf8)
         else { return }
         lock.lock()
-        let socket = ws
-        let open = socket?.isOpen == true
+        let current = ws
+        let socket = expectedSocket ?? current
+        let open: Bool
+        if let socket {
+            open = current === socket && socket.isOpen
+        } else {
+            open = false
+        }
         lock.unlock()
         if open {
             socket?.send(text: text)
@@ -1137,9 +1326,16 @@ public final class LoomupClient: @unchecked Sendable {
         }
     }
 
-    private func resolveSubscribeAck(_ data: ControlEvent) {
+    private func resolveSubscribeAck(
+        _ data: ControlEvent,
+        from socket: WebSocketConnecting
+    ) {
         guard let rid = data.requestId else { return }
         lock.lock()
+        guard ws === socket else {
+            lock.unlock()
+            return
+        }
         guard let pending = pendingSubscribeAcks.removeValue(forKey: rid) else {
             lock.unlock()
             return
