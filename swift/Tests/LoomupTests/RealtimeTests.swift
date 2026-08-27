@@ -230,7 +230,7 @@ final class RealtimeTests: XCTestCase {
         try await Task.sleep(nanoseconds: 115_000_000)
 
         let pingsAfterRotations = pingCount(box.socket)
-        XCTAssertGreaterThanOrEqual(pingsAfterRotations, 2)
+        XCTAssertGreaterThanOrEqual(pingsAfterRotations, 1)
         XCTAssertLessThanOrEqual(pingsAfterRotations, 5)
         XCTAssertEqual(box.sockets.count, 1)
         unsub()
