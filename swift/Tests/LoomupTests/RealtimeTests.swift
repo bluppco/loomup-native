@@ -227,11 +227,14 @@ final class RealtimeTests: XCTestCase {
         for index in 1...8 {
             c.setToken("token-\(index)")
         }
-        try await Task.sleep(nanoseconds: 115_000_000)
+        let heartbeatContinued = await waitUntil(timeoutMs: 1_500) {
+            pingCount(box.socket) >= 1
+        }
 
         let pingsAfterRotations = pingCount(box.socket)
+        XCTAssertTrue(heartbeatContinued)
         XCTAssertGreaterThanOrEqual(pingsAfterRotations, 1)
-        XCTAssertLessThanOrEqual(pingsAfterRotations, 5)
+        XCTAssertLessThanOrEqual(pingsAfterRotations, 2)
         XCTAssertEqual(box.sockets.count, 1)
         unsub()
         c.closeRealtime()
