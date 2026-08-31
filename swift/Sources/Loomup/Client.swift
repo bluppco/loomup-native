@@ -83,6 +83,32 @@ public func createClient(
     )
 }
 
+struct RefreshFlight<Value: Sendable>: Sendable {
+    let id: UUID
+    let task: Task<Value, Error>
+}
+
+final class RefreshFlightStore<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: RefreshFlight<Value>?
+
+    func getOrCreate(_ create: () -> Task<Value, Error>) -> RefreshFlight<Value> {
+        lock.withLock {
+            if let current { return current }
+            let flight = RefreshFlight(id: UUID(), task: create())
+            current = flight
+            return flight
+        }
+    }
+
+    func clear(id: UUID) {
+        lock.withLock {
+            guard current?.id == id else { return }
+            current = nil
+        }
+    }
+}
+
 /// Loomup Realtime client: REST + WebSocket subscriptions.
 public final class LoomupClient: @unchecked Sendable {
     public let url: URL
@@ -112,7 +138,7 @@ public final class LoomupClient: @unchecked Sendable {
     private var hasOpenedOnce = false
     private var reconnectAttempt = 0
     private var tablePrimaryKeys: [String: String] = [:]
-    private var refreshingTask: Task<AuthTokens, Error>?
+    private let refreshFlights = RefreshFlightStore<AuthTokens>()
 
     #if canImport(UIKit)
     private var foregroundObserver: NSObjectProtocol?
@@ -729,40 +755,29 @@ public final class LoomupClient: @unchecked Sendable {
     }
 
     public func refresh() async throws -> AuthTokens {
-        let task = try refreshTask()
-        defer { clearRefreshTask() }
-        return try await task.value
+        let flight = try refreshTask()
+        defer { refreshFlights.clear(id: flight.id) }
+        return try await flight.task.value
     }
 
-    private func refreshTask() throws -> Task<AuthTokens, Error> {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let rt = refreshToken else {
+    private func refreshTask() throws -> RefreshFlight<AuthTokens> {
+        guard let rt = lock.withLock({ refreshToken }) else {
             throw LoomupError("no refresh token", code: "no_refresh")
         }
-        if let existing = refreshingTask {
-            return existing
-        }
-        let task = Task<AuthTokens, Error> { [weak self] in
-            guard let self else { throw LoomupError("client deallocated", code: "gone") }
-            struct Body: Encodable { let refresh_token: String }
-            let body = try self.encodeJSON(Body(refresh_token: rt))
-            let env: DataEnvelope<AuthTokens> = try await self.requestJSON(
-                method: "POST",
-                path: "/auth/refresh",
-                body: body,
-                skipRetry: true
-            )
-            self.applyTokens(env.data)
-            return env.data
-        }
-        refreshingTask = task
-        return task
-    }
-
-    private func clearRefreshTask() {
-        lock.withLock {
-            refreshingTask = nil
+        return refreshFlights.getOrCreate {
+            Task<AuthTokens, Error> { [weak self] in
+                guard let self else { throw LoomupError("client deallocated", code: "gone") }
+                struct Body: Encodable { let refresh_token: String }
+                let body = try self.encodeJSON(Body(refresh_token: rt))
+                let env: DataEnvelope<AuthTokens> = try await self.requestJSON(
+                    method: "POST",
+                    path: "/auth/refresh",
+                    body: body,
+                    skipRetry: true
+                )
+                self.applyTokens(env.data)
+                return env.data
+            }
         }
     }
 

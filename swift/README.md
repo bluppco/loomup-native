@@ -12,13 +12,13 @@ Use the repository's semantic-versioned Git release:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.5"
+        from: "0.1.6"
     )
 ]
 ```
 
 The repository root is the published Swift Package Manager package. It exposes
-the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.5` requirement
+the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.6` requirement
 when automatic patch updates are not desired.
 
 ### Local path

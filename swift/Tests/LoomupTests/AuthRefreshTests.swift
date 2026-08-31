@@ -2,6 +2,27 @@ import XCTest
 @testable import Loomup
 
 final class AuthRefreshTests: XCTestCase {
+    func testCompletedRefreshWaiterCannotClearNewGeneration() async throws {
+        let flights = RefreshFlightStore<Int>()
+        let first = flights.getOrCreate { Task { 1 } }
+        let firstWaiter = flights.getOrCreate { Task { 2 } }
+        XCTAssertEqual(first.id, firstWaiter.id)
+
+        _ = try await first.task.value
+        flights.clear(id: first.id)
+
+        let second = flights.getOrCreate { Task { 2 } }
+        XCTAssertNotEqual(first.id, second.id)
+
+        // A waiter from the completed generation may resume after the next
+        // generation starts. Its cleanup must not clear the newer flight.
+        flights.clear(id: firstWaiter.id)
+        let secondWaiter = flights.getOrCreate { Task { 3 } }
+        XCTAssertEqual(second.id, secondWaiter.id)
+        let secondValue = try await secondWaiter.task.value
+        XCTAssertEqual(secondValue, 2)
+    }
+
     func testOn401RefreshesOnceAndRetries() async throws {
         let http = MockHTTP()
         http.handler = { method, url, auth, body in
