@@ -12,13 +12,13 @@ Use the repository's semantic-versioned Git release:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.4"
+        from: "0.1.5"
     )
 ]
 ```
 
 The repository root is the published Swift Package Manager package. It exposes
-the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.4` requirement
+the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.5` requirement
 when automatic patch updates are not desired.
 
 ### Local path
@@ -74,7 +74,19 @@ The SDK owns its small internal SQLite state table, mutation queue, cursors, res
 
 - `setToken(_:)` re-authenticates an open WebSocket and re-sends all active subscriptions.
 - Automatic 401 retry uses `refreshToken` when set.
+- Refresh failures retain their own status and code, so transient outages are not reported as sign-out.
 - RESYNC catch-up events use Unix **seconds** for `ts`.
+
+Hosted cookie-mode projects can bridge HttpOnly token responses into the native
+JSON envelope with response-cookie precedence:
+
+```swift
+let client = createClient(
+    url: hostedProjectURL,
+    refreshTokenStore: refreshTokenStore,
+    http: CookieAuthHTTPTransport()
+)
+```
 
 ## Realtime reconnect
 

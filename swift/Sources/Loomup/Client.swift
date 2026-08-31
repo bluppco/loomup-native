@@ -522,20 +522,16 @@ public final class LoomupClient: @unchecked Sendable {
            path != "/auth/login",
            path != "/auth/register"
         {
-            do {
-                _ = try await self.refresh()
-                return try await request(
-                    method: method,
-                    path: path,
-                    body: body,
-                    contentType: contentType,
-                    extraHeaders: extraHeaders,
-                    skipRetry: true,
-                    skipIntegrityRetry: skipIntegrityRetry
-                )
-            } catch {
-                // fall through with original error
-            }
+            _ = try await self.refresh()
+            return try await request(
+                method: method,
+                path: path,
+                body: body,
+                contentType: contentType,
+                extraHeaders: extraHeaders,
+                skipRetry: true,
+                skipIntegrityRetry: skipIntegrityRetry
+            )
         }
 
         if !(200..<300).contains(status) {

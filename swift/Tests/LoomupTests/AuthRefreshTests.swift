@@ -99,4 +99,88 @@ final class AuthRefreshTests: XCTestCase {
             XCTFail("wrong error \(error)")
         }
     }
+
+    func testRefreshFailureIsPropagatedInsteadOfOriginalUnauthorized() async {
+        let http = MockHTTP()
+        http.handler = { _, url, _, _ in
+            if url.hasSuffix("/auth/refresh") {
+                return (
+                    jsonData(["error": ["code": "unavailable", "message": "try again"]]),
+                    503
+                )
+            }
+            return (
+                jsonData(["error": ["code": "unauthorized", "message": "expired"]]),
+                401
+            )
+        }
+        let client = createClient(
+            url: URL(string: "http://example.test")!,
+            token: "old-access",
+            refreshToken: "refresh-1",
+            http: http
+        )
+
+        do {
+            _ = try await client.me()
+            XCTFail("expected refresh failure")
+        } catch let error as LoomupError {
+            XCTAssertEqual(error.code, "unavailable")
+            XCTAssertEqual(error.status, 503)
+        } catch {
+            XCTFail("wrong error \(error)")
+        }
+    }
+
+    func testConcurrentUnauthorizedRequestsShareOneRefresh() async throws {
+        let refreshCount = LockedValue(0)
+        let http = MockHTTP()
+        http.handler = { _, url, auth, _ in
+            if url.hasSuffix("/auth/refresh") {
+                refreshCount.withValue { $0 += 1 }
+                try await Task.sleep(nanoseconds: 20_000_000)
+                return (
+                    jsonData([
+                        "data": [
+                            "access_token": "new-access",
+                            "refresh_token": "refresh-2",
+                            "token_type": "Bearer",
+                            "expires_in": 900,
+                        ],
+                    ]),
+                    200
+                )
+            }
+            if auth == "Bearer new-access" {
+                return (
+                    jsonData([
+                        "data": [
+                            "id": "u1",
+                            "email": "a@b.com",
+                            "role": "user",
+                            "disabled": false,
+                            "created_at": 1,
+                        ],
+                    ]),
+                    200
+                )
+            }
+            return (
+                jsonData(["error": ["code": "unauthorized", "message": "expired"]]),
+                401
+            )
+        }
+        let client = createClient(
+            url: URL(string: "http://example.test")!,
+            token: "old-access",
+            refreshToken: "refresh-1",
+            http: http
+        )
+
+        async let first = client.me()
+        async let second = client.me()
+        _ = try await (first, second)
+
+        XCTAssertEqual(refreshCount.snapshot(), 1)
+    }
 }
