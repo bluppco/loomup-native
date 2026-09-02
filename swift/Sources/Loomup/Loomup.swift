@@ -16,7 +16,6 @@
      print(event.op, event.data as Any)
  }
  unsub()
- client.closeRealtime()
  ```
  */
 

@@ -185,20 +185,25 @@ final class RealtimeTests: XCTestCase {
         let firstUnsub = c.from("todos").subscribe { _ in }
         let firstPing = await waitUntil(timeoutMs: 200) { pingCount(box.socket) >= 1 }
         XCTAssertTrue(firstPing)
+        let first = box.socket
         firstUnsub()
-        let afterUnsubscribe = pingCount(box.socket)
+        XCTAssertEqual(first?.closeCount, 1)
+        XCTAssertEqual(first?.isOpen, false)
+        let afterUnsubscribe = pingCount(first)
         try await Task.sleep(nanoseconds: 90_000_000)
-        XCTAssertEqual(pingCount(box.socket), afterUnsubscribe)
+        XCTAssertEqual(pingCount(first), afterUnsubscribe)
 
         let secondUnsub = c.from("todos").subscribe { _ in }
         let restarted = await waitUntil(timeoutMs: 200) {
-            pingCount(box.socket) > afterUnsubscribe
+            box.sockets.count == 2 && pingCount(box.socket) >= 1
         }
         XCTAssertTrue(restarted)
+        let second = box.socket
         c.closeRealtime()
-        let afterClose = pingCount(box.socket)
+        XCTAssertEqual(second?.closeCount, 1)
+        let afterClose = pingCount(second)
         try await Task.sleep(nanoseconds: 90_000_000)
-        XCTAssertEqual(pingCount(box.socket), afterClose)
+        XCTAssertEqual(pingCount(second), afterClose)
         secondUnsub()
     }
 
@@ -297,7 +302,86 @@ final class RealtimeTests: XCTestCase {
         XCTAssertNotNil(box.socket)
         XCTAssertEqual(box.socket?.connectCount, 1)
         unsub()
-        c.closeRealtime()
+        XCTAssertEqual(box.socket?.closeCount, 1)
+        XCTAssertEqual(box.socket?.isOpen, false)
+    }
+
+    func testMultiplexedSocketClosesOnlyAfterFinalUnsubscribe() async throws {
+        let box = MockWebSocketBox()
+        let c = createClient(
+            url: URL(string: "http://localhost:3000")!,
+            webSocketFactory: box.factory()
+        )
+        let unsubscribeTodos = c.from("todos").subscribe { _ in }
+        let unsubscribeNotes = c.from("notes").subscribe { _ in }
+        let opened = await waitUntil(timeoutMs: 150) { box.socket?.isOpen == true }
+        XCTAssertTrue(opened)
+        XCTAssertEqual(box.sockets.count, 1)
+        let first = box.socket
+
+        unsubscribeTodos()
+        XCTAssertEqual(first?.closeCount, 0)
+        XCTAssertTrue(first?.parsedSent().contains {
+            ($0["type"] as? String) == "unsubscribe"
+                && ($0["table"] as? String) == "todos"
+        } ?? false)
+
+        unsubscribeNotes()
+        XCTAssertEqual(first?.closeCount, 1)
+        XCTAssertEqual(first?.isOpen, false)
+        XCTAssertFalse(first?.parsedSent().contains {
+            ($0["type"] as? String) == "unsubscribe"
+                && ($0["table"] as? String) == "notes"
+        } ?? true)
+
+        let unsubscribeAgain = c.from("todos").subscribe { _ in }
+        let reopened = await waitUntil(timeoutMs: 150) {
+            box.sockets.count == 2 && box.socket?.isOpen == true
+        }
+        XCTAssertTrue(reopened)
+        XCTAssertFalse(first === box.socket)
+        unsubscribeAgain()
+        XCTAssertEqual(box.socket?.closeCount, 1)
+    }
+
+    func testFinalUnsubscribeRetiresConnectingSocketAndIgnoresLateEvents() async throws {
+        let box = MockWebSocketBox()
+        box.autoOpen = false
+        let events = LockedValue<[ChangeEvent]>([])
+        let c = createClient(
+            url: URL(string: "http://localhost:3000")!,
+            webSocketFactory: box.factory()
+        )
+        let unsubscribe = c.from("todos").subscribe { event in
+            events.withValue { $0.append(event) }
+        }
+        guard let first = box.socket else {
+            XCTFail("expected connecting socket")
+            return
+        }
+        let lateOpen = first.onOpen
+        let lateMessage = first.onMessage
+        let lateClose = first.onClose
+
+        unsubscribe()
+        XCTAssertEqual(first.closeCount, 1)
+        XCTAssertFalse(first.isConnectingOrOpen)
+
+        lateOpen?()
+        lateMessage?(#"{"type":"change","table":"todos","op":"UPDATE","id":"1","ts":1}"#)
+        lateClose?()
+        try await Task.sleep(nanoseconds: 75_000_000)
+        XCTAssertTrue(events.snapshot().isEmpty)
+        XCTAssertEqual(box.sockets.count, 1)
+
+        box.autoOpen = true
+        let unsubscribeAgain = c.from("todos").subscribe { _ in }
+        let reopened = await waitUntil(timeoutMs: 150) {
+            box.sockets.count == 2 && box.socket?.isOpen == true
+        }
+        XCTAssertTrue(reopened)
+        unsubscribeAgain()
+        XCTAssertEqual(box.socket?.closeCount, 1)
     }
 
     func testResumeRealtimeReplacesStaleSocketAndKeepsSubscriptions() async throws {

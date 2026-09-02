@@ -11,7 +11,7 @@ server and JavaScript SDK repositories.
 
 These packages are source-available and continuously tested. Swift is released
 from the root package through semantic-version Git tags; the current release is
-`0.1.6`. The release workflow verifies tagged Swift source but does not publish
+`0.1.7`. The release workflow verifies tagged Swift source but does not publish
 to Swift Package Index or a Swift package-registry server. Kotlin and Dart do
 not yet have Maven Central or pub.dev releases.
 
@@ -27,7 +27,7 @@ Add the released package from its Git URL and link both products:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.6"
+        from: "0.1.7"
     )
 ],
 targets: [
@@ -41,7 +41,7 @@ targets: [
 ]
 ```
 
-Use an exact `0.1.6` requirement when automatic patch updates are not desired.
+Use an exact `0.1.7` requirement when automatic patch updates are not desired.
 For local development, replace the URL dependency with
 `.package(path: "../loomup-native")`.
 

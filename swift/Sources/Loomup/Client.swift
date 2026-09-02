@@ -149,6 +149,11 @@ public final class LoomupClient: @unchecked Sendable {
         let workItem: DispatchWorkItem
     }
 
+    private struct RealtimeShutdown {
+        let socket: WebSocketConnecting?
+        let pending: [String: PendingAck]
+    }
+
     public init(options: LoomupClientOptions) {
         var base = options.url
         if base.absoluteString.hasSuffix("/") {
@@ -834,15 +839,35 @@ public final class LoomupClient: @unchecked Sendable {
 
         return { [weak self] in
             guard let self else { return }
+            var shouldSendUnsubscribe = false
+            var shutdown: RealtimeShutdown?
             self.lock.lock()
-            self.subs[key]?.removeValue(forKey: handlerId)
-            let last = self.subs[key]?.isEmpty ?? true
-            if last {
-                self.subs.removeValue(forKey: key)
+            guard var handlers = self.subs[key],
+                  handlers.removeValue(forKey: handlerId) != nil
+            else {
+                self.lock.unlock()
+                return
             }
-            let noSubscriptions = self.subs.isEmpty
+            if handlers.isEmpty {
+                self.subs.removeValue(forKey: key)
+                if self.subs.isEmpty {
+                    // Claim and reset the idle socket while still holding the
+                    // subscription lock. A concurrent new subscriber will then
+                    // open a fresh socket instead of being cleared by teardown.
+                    shutdown = self.beginRealtimeShutdownLocked(clearSubscriptions: false)
+                } else {
+                    shouldSendUnsubscribe = true
+                }
+            } else {
+                self.subs[key] = handlers
+            }
             self.lock.unlock()
-            if last {
+
+            if let shutdown {
+                self.finishRealtimeShutdown(shutdown)
+                return
+            }
+            if shouldSendUnsubscribe {
                 var msg: [String: Any] = [
                     "type": "unsubscribe",
                     "table": table,
@@ -850,9 +875,6 @@ public final class LoomupClient: @unchecked Sendable {
                 ]
                 if let rowId { msg["id"] = rowId }
                 self.sendJSON(msg)
-            }
-            if noSubscriptions {
-                self.stopHeartbeat()
             }
         }
     }
@@ -921,23 +943,36 @@ public final class LoomupClient: @unchecked Sendable {
 
     public func closeRealtime() {
         lock.lock()
+        let shutdown = beginRealtimeShutdownLocked(clearSubscriptions: true)
+        lock.unlock()
+        finishRealtimeShutdown(shutdown)
+    }
+
+    /// Capture all realtime state that must be retired. The caller must hold
+    /// `lock`; actual socket callbacks and continuations run after unlocking.
+    private func beginRealtimeShutdownLocked(clearSubscriptions: Bool) -> RealtimeShutdown {
         intentionalClose = true
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
         clearHeartbeatLocked()
         let socket = ws
         ws = nil
-        subs.removeAll()
+        if clearSubscriptions {
+            subs.removeAll()
+        }
         hasOpenedOnce = false
+        reconnectAttempt = 0
         let pending = pendingSubscribeAcks
         pendingSubscribeAcks.removeAll()
-        lock.unlock()
+        return RealtimeShutdown(socket: socket, pending: pending)
+    }
 
-        socket?.onOpen = nil
-        socket?.onMessage = nil
-        socket?.onClose = nil
-        socket?.close()
-        for (_, p) in pending {
+    private func finishRealtimeShutdown(_ shutdown: RealtimeShutdown) {
+        shutdown.socket?.onOpen = nil
+        shutdown.socket?.onMessage = nil
+        shutdown.socket?.onClose = nil
+        shutdown.socket?.close()
+        for (_, p) in shutdown.pending {
             p.workItem.cancel()
             p.continuation.resume(throwing: LoomupError(
                 "realtime closed before subscribe acknowledgement",
@@ -1233,12 +1268,6 @@ public final class LoomupClient: @unchecked Sendable {
         if shouldReconnect {
             scheduleReconnect()
         }
-    }
-
-    private func stopHeartbeat() {
-        lock.lock()
-        clearHeartbeatLocked()
-        lock.unlock()
     }
 
     private func clearHeartbeatLocked() {

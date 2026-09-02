@@ -12,13 +12,13 @@ Use the repository's semantic-versioned Git release:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.6"
+        from: "0.1.7"
     )
 ]
 ```
 
 The repository root is the published Swift Package Manager package. It exposes
-the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.6` requirement
+the `Loomup` and `LoomupAppIntegrity` products. Use an exact `0.1.7` requirement
 when automatic patch updates are not desired.
 
 ### Local path
@@ -53,7 +53,6 @@ let unsub = try await client.from("todos").subscribeReady { event in
 }
 // Prefer subscribeReady when the next line mutates data.
 unsub()
-client.closeRealtime()
 ```
 
 ## Offline SQLite
@@ -99,6 +98,12 @@ client.setTablePrimaryKey(table: "keys", pk: "slug")
 On iOS and tvOS the client also observes the app becoming active and replaces
 the possibly stale socket immediately without dropping subscriptions. Other
 hosts can call `resumeRealtime()` from their foreground lifecycle callback.
+
+The client multiplexes all active subscriptions over one WebSocket. Calling a
+subscription's returned cleanup function leaves that socket open while other
+subscriptions remain and closes it automatically after the final subscription
+is removed. Use `closeRealtime()` only to dispose every active realtime
+subscription at once, such as during sign-out or client replacement.
 
 While a socket is open and at least one subscription is active, the client
 sends an application heartbeat through the normal WebSocket text path:

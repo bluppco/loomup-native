@@ -74,6 +74,7 @@ final class MockWebSocket: WebSocketConnecting, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var sent: [String] = []
     private(set) var connectCount = 0
+    private var _closeCount = 0
     private var _isOpen = false
     private var _connecting = false
     var openDelay: TimeInterval = 0
@@ -92,6 +93,12 @@ final class MockWebSocket: WebSocketConnecting, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return _connecting || _isOpen
+    }
+
+    var closeCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _closeCount
     }
 
     func connect(url: URL) {
@@ -117,6 +124,7 @@ final class MockWebSocket: WebSocketConnecting, @unchecked Sendable {
 
     func close() {
         lock.lock()
+        _closeCount += 1
         _isOpen = false
         _connecting = false
         lock.unlock()
