@@ -11,7 +11,7 @@ server and JavaScript SDK repositories.
 
 These packages are source-available and continuously tested. Swift is released
 from the root package through semantic-version Git tags; the current release is
-`0.1.7`. The release workflow verifies tagged Swift source but does not publish
+`0.1.8`. The release workflow verifies tagged Swift source but does not publish
 to Swift Package Index or a Swift package-registry server. Kotlin and Dart do
 not yet have Maven Central or pub.dev releases.
 
@@ -27,7 +27,7 @@ Add the released package from its Git URL and link both products:
 dependencies: [
     .package(
         url: "https://github.com/bluppco/loomup-native.git",
-        from: "0.1.7"
+        from: "0.1.8"
     )
 ],
 targets: [
@@ -41,7 +41,7 @@ targets: [
 ]
 ```
 
-Use an exact `0.1.7` requirement when automatic patch updates are not desired.
+Use an exact `0.1.8` requirement when automatic patch updates are not desired.
 For local development, replace the URL dependency with
 `.package(path: "../loomup-native")`.
 
@@ -107,3 +107,21 @@ seconds. A missing or mismatched response retires the socket even if it still
 reports `OPEN`; the normal jittered reconnect path then authenticates,
 re-subscribes, and refetches current authorized state. These messages complement
 the WebSocket protocol Ping/Pong frames and do not replace or disable them.
+
+## Swift large file uploads
+
+Release 0.1.8 automatically sends uploads above 8 MiB as bounded resumable
+chunks. Deploy the backend resumable-upload routes first. The project must
+allow the desired completed object size (up to 1 GiB) and have sufficient
+storage quota. Transient chunk and completion failures are retried; terminal
+failures abort staged uploads. Cancellation is checked between chunks.
+
+Prefer `client.storage.from("files").upload(path: "movie.mp4", fileURL: url,
+contentType: "video/mp4")` for large files: it reads only one chunk at a time.
+Existing `data:` callers also use chunked transfer for large Data values.
+
+Use `downloadFile(path:)` to receive a temporary-file URL for large downloads.
+The caller must remove the file after previewing or sharing it. Built-in URLSession
+transports download directly to disk; custom HTTP transports must implement
+`download(for:)` to support this operation. Authentication refresh applies as
+for ordinary downloads.

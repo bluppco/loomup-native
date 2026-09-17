@@ -3,6 +3,13 @@ import Foundation
 /// Injectable HTTP transport (defaults to `URLSession`).
 public protocol HTTPTransport: Sendable {
     func data(for request: URLRequest) async throws -> (Data, URLResponse)
+    func download(for request: URLRequest) async throws -> (URL, URLResponse)
+}
+
+public extension HTTPTransport {
+    func download(for request: URLRequest) async throws -> (URL, URLResponse) {
+        throw LoomupError("This transport does not support file downloads", code: "unsupported_transport")
+    }
 }
 
 public struct URLSessionHTTPTransport: HTTPTransport {
@@ -10,6 +17,10 @@ public struct URLSessionHTTPTransport: HTTPTransport {
 
     public init(session: URLSession = .shared) {
         self.session = session
+    }
+
+    public func download(for request: URLRequest) async throws -> (URL, URLResponse) {
+        try await session.download(for: request)
     }
 
     public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
@@ -26,6 +37,10 @@ public struct CookieAuthHTTPTransport: HTTPTransport {
 
     public init(session: URLSession = .shared) {
         self.session = session
+    }
+
+    public func download(for request: URLRequest) async throws -> (URL, URLResponse) {
+        try await session.download(for: request)
     }
 
     public func data(for request: URLRequest) async throws -> (Data, URLResponse) {

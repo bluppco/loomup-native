@@ -300,6 +300,11 @@ public final class LoomupClient: @unchecked Sendable {
             contentType: String? = "application/octet-stream",
             upsert: Bool = false
         ) async throws -> StorageObject {
+            if data.count > 8 * 1024 * 1024 {
+                return try await uploadChunks(path: path, size: data.count, contentType: contentType, upsert: upsert) { offset, count in
+                    data.subdata(in: offset..<(offset + count))
+                }
+            }
             var headers: [String: String] = [:]
             if let contentType { headers["Content-Type"] = contentType }
             if upsert { headers["x-loomup-upsert"] = "true" }
@@ -312,6 +317,76 @@ public final class LoomupClient: @unchecked Sendable {
                 skipRetry: false
             )
             return env.data
+        }
+
+        /// Upload a file using bounded reads, without loading it into a Data value.
+        public func upload(path: String, fileURL: URL, contentType: String? = "application/octet-stream", upsert: Bool = false) async throws -> StorageObject {
+            let handle = try FileHandle(forReadingFrom: fileURL)
+            defer { try? handle.close() }
+            let size = try handle.seekToEnd()
+            guard size > 0, size <= UInt64(Int.max) else { throw LoomupError("Invalid file size", code: "invalid_input") }
+            return try await uploadChunks(path: path, size: Int(size), contentType: contentType, upsert: upsert) { offset, count in
+                try handle.seek(toOffset: UInt64(offset))
+                let chunk = try handle.read(upToCount: count) ?? Data()
+                guard chunk.count == count else { throw LoomupError("File changed during upload", code: "invalid_input") }
+                return chunk
+            }
+        }
+
+        private struct UploadSession: Decodable {
+            let id: String
+            let size: Int
+            let offset: Int
+            let chunk_size: Int
+        }
+
+        private func uploadRequest<T: Decodable>(method: String, path: String, body: Data? = nil, contentType: String? = nil) async throws -> DataEnvelope<T> {
+            for attempt in 0...2 {
+                try Task.checkCancellation()
+                do {
+                    return try await client!.requestJSON(method: method, path: path, body: body, contentType: contentType)
+                } catch {
+                    if attempt == 2 { throw error }
+                    if let api = error as? LoomupError, let status = api.status, status > 0, status < 500, status != 429 { throw error }
+                    try await Task.sleep(nanoseconds: UInt64(250_000_000 * (1 << attempt)))
+                }
+            }
+            throw LoomupError("Upload failed", code: "upload_failed")
+        }
+
+        private func uploadChunks(path: String, size: Int, contentType: String?, upsert: Bool, read: (Int, Int) throws -> Data) async throws -> StorageObject {
+            let b = bucket.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? bucket
+            let base = "/storage/v1/\(b)/uploads"
+            var metadata: [String: Any] = ["path": path, "size": size, "upsert": upsert]
+            if let contentType { metadata["content_type"] = contentType }
+            let start: DataEnvelope<UploadSession> = try await client!.requestJSON(method: "POST", path: base,
+                body: JSONSerialization.data(withJSONObject: metadata), contentType: "application/json")
+            let session = start.data
+            let endpoint = "\(base)/\(session.id)"
+            guard session.size == size, session.offset == 0, (1...(8 * 1024 * 1024)).contains(session.chunk_size) else {
+                throw LoomupError("Invalid upload session", code: "upload_failed")
+            }
+            do {
+                var offset = 0
+                while offset < size {
+                    try Task.checkCancellation()
+                    let count = min(session.chunk_size, size - offset)
+                    let chunk = try read(offset, count)
+                    let response: DataEnvelope<UploadSession> = try await uploadRequest(method: "PUT", path: "\(endpoint)?offset=\(offset)", body: chunk, contentType: "application/octet-stream")
+                    guard response.data.offset == offset + count else { throw LoomupError("Unexpected upload offset", code: "upload_failed") }
+                    offset += count
+                }
+                let completed: DataEnvelope<StorageObject> = try await uploadRequest(method: "POST", path: "\(endpoint)/complete")
+                return completed.data
+            } catch {
+                _ = try? await client!.request(method: "DELETE", path: endpoint, body: nil, contentType: nil, extraHeaders: [:], skipRetry: false)
+                throw error
+            }
+        }
+
+        /// Download directly to a temporary file. The caller owns and must remove the returned URL.
+        public func downloadFile(path: String) async throws -> URL {
+            try await client!.requestDownload(path: objectPath(path))
         }
 
         public func download(path: String) async throws -> Data {
@@ -495,6 +570,7 @@ public final class LoomupClient: @unchecked Sendable {
         let requestURL = joinURL(base: url, path: path)
         var req = URLRequest(url: requestURL)
         req.httpMethod = method
+        if path.hasPrefix("/storage/v1/"), path.contains("/uploads") { req.timeoutInterval = 300 }
         if extraHeaders["Accept"] == nil {
             req.setValue("application/json", forHTTPHeaderField: "Accept")
         }
@@ -569,6 +645,28 @@ public final class LoomupClient: @unchecked Sendable {
             throw parseError(data: data, status: status)
         }
         return data
+    }
+
+    private func requestDownload(path: String, retry: Bool = true) async throws -> URL {
+        var request = URLRequest(url: joinURL(base: url, path: path))
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        let (access, refresh) = lock.withLock { (token, refreshToken) }
+        if let access { request.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization") }
+        if let publishableKey { request.setValue(publishableKey, forHTTPHeaderField: "X-Loomup-Key") }
+        let (file, response) = try await http.download(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401, retry, refresh != nil {
+            try? FileManager.default.removeItem(at: file)
+            _ = try await self.refresh()
+            return try await requestDownload(path: path, retry: false)
+        }
+        guard (200..<300).contains(status) else {
+            defer { try? FileManager.default.removeItem(at: file) }
+            let handle = try FileHandle(forReadingFrom: file)
+            defer { try? handle.close() }
+            throw parseError(data: (try handle.read(upToCount: 64 * 1024)) ?? Data(), status: status)
+        }
+        return file
     }
 
     private func isIntegrityProtected(method: String, path: String) -> Bool {
